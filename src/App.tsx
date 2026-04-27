@@ -14,6 +14,7 @@ import InputNode from './InputNode'
 import ImageInputNode from './ImageInputNode'
 import ImageNode from './ImageNode'
 import ImageGenNode from './ImageGenNode'
+import ImageToPromptNode from './ImageToPromptNode'
 
 const nodeTypes = {
   custom: CustomNode,
@@ -21,6 +22,7 @@ const nodeTypes = {
   imageInput: ImageInputNode,
   imageNode: ImageNode,
   imageGen: ImageGenNode,
+  imageToPrompt: ImageToPromptNode,
 }
 
 const initialNodes: Node[] = [
@@ -102,6 +104,16 @@ useEffect(() => {
     setNodes((nds) => [...nds, newNode])
   }
 
+  const addImageToPromptNode = () => {
+    const newNode: Node = {
+      id: `${nodes.length + 1}`,
+      type: 'imageToPrompt',
+      position: { x: 100, y: 200 },
+      data: { label: '' },
+    }
+    setNodes((nds) => [...nds, newNode])
+  }
+
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
       <button
@@ -175,6 +187,24 @@ useEffect(() => {
         }}
       >
         + 生图节点
+      </button>
+      <button
+        onClick={addImageToPromptNode}
+        style={{
+          position: 'absolute',
+          top: 10,
+          left: 550,
+          zIndex: 1000,
+          padding: '8px 16px',
+          background: '#000',
+          color: '#fff',
+          border: '1px solid #000',
+          borderRadius: 6,
+          fontFamily: 'monospace',
+          cursor: 'pointer',
+        }}
+      >
+        + 反推节点
       </button>
       <ReactFlow
         nodes={nodes}
