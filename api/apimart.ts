@@ -1,10 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const path = Array.isArray(req.query.path)
-    ? req.query.path.join('/')
-    : (req.query.path || '')
-  const targetUrl = `https://api.apimart.ai/${path}`
+  const url = new URL(req.url || '', `http://${req.headers.host}`)
+  const path = url.pathname.replace(/^\/api\/apimart\//, '')
+  const queryString = url.search
+  const targetUrl = `https://api.apimart.ai/${path}${queryString}`
 
   try {
     const upstream = await fetch(targetUrl, {
@@ -24,7 +24,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     res.status(upstream.status).setHeader('Content-Type', contentType).send(data)
   } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : String(e)
-    res.status(500).json({ error: 'proxy failed', message })
+    const message = e instanceof Error ? e.message : 'unknown error'
+    res.status(500).json({ error: 'apimart proxy failed', message })
   }
 }

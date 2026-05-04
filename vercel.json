@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/api/kimi/(.*)", "destination": "/api/kimi" },
+    { "source": "/api/apimart/(.*)", "destination": "/api/apimart" }
+  ]
+}
