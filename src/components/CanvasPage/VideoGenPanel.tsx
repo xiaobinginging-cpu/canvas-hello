@@ -6,7 +6,10 @@ import { runCanvasVideoGeneration } from '../../lib/canvasGeneration.ts'
 import { getGithubLogin, getRawAssetUrl } from '../../lib/github.ts'
 import { useProjectStore, type VideoGenRatio } from '../../store/useStore.ts'
 import type { APImartVideoModel, VideoQuality } from '../../types/video.ts'
+import { GEN_PANEL_GENERATE_BTN_CLASS } from './genPanelStyles.ts'
 import ReferenceImagePicker from './ReferenceImagePicker.tsx'
+import ReferenceImageThumb from './ReferenceImageThumb.tsx'
+import ReferenceSelectionBar from './ReferenceSelectionBar.tsx'
 
 const VIDEO_RATIOS: { value: VideoGenRatio; label: string }[] = [
   { value: '16:9', label: '16:9' },
@@ -79,60 +82,6 @@ function validateVideoReferenceIds(refIds: string[]): string | null {
   return null
 }
 
-function VideoGenSelectionBar() {
-  const canvasSelectionIds = useProjectStore((s) => s.canvasSelectionIds)
-  const commitCanvasSelection = useProjectStore((s) => s.commitCanvasSelection)
-  const cancelCanvasSelection = useProjectStore((s) => s.cancelCanvasSelection)
-  const n = canvasSelectionIds.length
-
-  return (
-    <div
-      data-no-canvas-pan
-      className="pointer-events-auto fixed bottom-16 left-1/2 z-[160] w-[min(96vw,720px)] -translate-x-1/2 rounded-lg border border-neutral-200 bg-white font-mono shadow-lg"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-xs text-neutral-800">
-        <p className="min-w-0 flex-1 text-neutral-600">
-          选择参考图中… 点击画布图片选择（视频参考）
-        </p>
-        <span className="shrink-0 tabular-nums text-neutral-500">已选 {n} 张</span>
-        <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-neutral-800 hover:bg-neutral-50"
-            onClick={() => cancelCanvasSelection()}
-          >
-            取消
-          </button>
-          <button
-            type="button"
-            className="rounded bg-neutral-900 px-3 py-1.5 text-white hover:bg-neutral-800"
-            onClick={() => commitCanvasSelection()}
-          >
-            完成 {n} 张
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function RefThumb({ id, onRemove }: { id: string; onRemove: () => void }) {
-  const url = useProjectStore((s) => s.imageObjectUrls.get(id))
-  return (
-    <div className="relative h-12 w-12 overflow-hidden rounded border border-neutral-200 bg-neutral-100">
-      {url ? <img src={url} alt="" className="h-full w-full object-cover" /> : null}
-      <button
-        type="button"
-        className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-neutral-800 text-[10px] text-white shadow"
-        onClick={onRemove}
-        title="移除"
-      >
-        ✕
-      </button>
-    </div>
-  )
-}
-
 export default function VideoGenPanel({
   canvasViewportRef,
 }: {
@@ -161,11 +110,12 @@ export default function VideoGenPanel({
   }, [videoGenConfig.referenceImageIds])
 
   if (isCanvasSelectionMode && canvasReferenceTarget === 'video-gen') {
-    return <VideoGenSelectionBar />
+    return <ReferenceSelectionBar context="video-gen" />
   }
 
   if (!videoGenPanelOpen) return null
 
+  const promptHasContent = videoGenConfig.prompt.trim() !== ''
   const apiKeyOk = hasApimartApiKey()
   const maxRef = maxRefsForModel(videoGenConfig.model)
   const durationOptions = durationsForModel(videoGenConfig.model)
@@ -198,11 +148,6 @@ export default function VideoGenPanel({
           </p>
         ) : null}
 
-        <p className="text-[10px] leading-snug text-neutral-500">
-          图生视频参考须为已同步到 GitHub 的图片（路径 <code className="rounded bg-neutral-100 px-0.5">assets/…</code>
-          ）；上传或生成中的图片请等待保存完成后再选作参考。
-        </p>
-
         <div className="flex flex-wrap items-start gap-3">
           <ReferenceImagePicker
             canvasViewportRef={canvasViewportRef}
@@ -221,7 +166,7 @@ export default function VideoGenPanel({
                 {videoGenConfig.referenceImageIds.length}/{maxRef}
               </span>
               {videoGenConfig.referenceImageIds.map((rid) => (
-                <RefThumb key={rid} id={rid} onRemove={() => removeRef(rid)} />
+                <ReferenceImageThumb key={rid} id={rid} onRemove={() => removeRef(rid)} />
               ))}
             </div>
           ) : null}
@@ -234,131 +179,135 @@ export default function VideoGenPanel({
           onChange={(e) => updateVideoGenConfig({ prompt: e.target.value })}
         />
 
-        <div className="flex flex-wrap items-center gap-2 border-t border-neutral-100 pt-2">
-          <label className="flex items-center gap-1 text-xs text-neutral-600">
-            API
-            <select
-              disabled
-              className="cursor-not-allowed rounded border border-neutral-200 bg-neutral-100 px-2 py-1.5 text-xs text-neutral-600"
-              value="apimart"
-            >
-              <option value="apimart">APIMart</option>
-            </select>
-          </label>
+        <div className="flex flex-col gap-2 border-t border-neutral-100 pt-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-1 text-xs text-neutral-600">
+              比例
+              <select
+                className="min-w-[120px] rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900"
+                value={videoGenConfig.ratio}
+                onChange={(e) =>
+                  updateVideoGenConfig({ ratio: e.target.value as VideoGenRatio })
+                }
+              >
+                {VIDEO_RATIOS.map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-          <label className="flex min-w-0 flex-1 items-center gap-1 text-xs text-neutral-600">
-            模型
-            <select
-              className="min-w-0 max-w-full flex-1 rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900"
-              value={videoGenConfig.model}
-              onChange={(e) => {
-                const next = e.target.value as APImartVideoModel
-                const allowed = durationsForModel(next)
-                const nextDur = allowed.includes(videoGenConfig.duration)
-                  ? videoGenConfig.duration
-                  : defaultDurationForModel(next)
-                updateVideoGenConfig({
-                  model: next,
-                  duration: nextDur,
+            <label className="flex items-center gap-1 text-xs text-neutral-600">
+              分辨率
+              <select
+                className="min-w-[120px] rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900"
+                value={videoGenConfig.quality}
+                onChange={(e) =>
+                  updateVideoGenConfig({ quality: e.target.value as VideoQuality })
+                }
+                title="各模型支持不同档位；不支持的选项会在请求时自动降级（见 console）"
+              >
+                {QUALITY_OPTIONS.map((q) => (
+                  <option key={q.value} value={q.value} title={q.title}>
+                    {q.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex items-center gap-1 text-xs text-neutral-600">
+              时长（秒）
+              <select
+                className="min-w-[120px] rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900"
+                value={videoGenConfig.duration}
+                onChange={(e) =>
+                  updateVideoGenConfig({ duration: Number(e.target.value) })
+                }
+              >
+                {durationOptions.map((d) => (
+                  <option key={d} value={d}>
+                    {d}s
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-1 text-xs text-neutral-600">
+              API
+              <select
+                disabled
+                className="min-w-[120px] cursor-not-allowed rounded border border-neutral-200 bg-neutral-100 px-2 py-1.5 text-xs text-neutral-600"
+                value="apimart"
+              >
+                <option value="apimart">APIMart</option>
+              </select>
+            </label>
+
+            <label className="flex min-w-0 flex-1 items-center gap-1 text-xs text-neutral-600">
+              模型
+              <select
+                className="min-w-[min(100%,160px)] max-w-full flex-1 rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900 sm:min-w-[160px]"
+                value={videoGenConfig.model}
+                onChange={(e) => {
+                  const next = e.target.value as APImartVideoModel
+                  const allowed = durationsForModel(next)
+                  const nextDur = allowed.includes(videoGenConfig.duration)
+                    ? videoGenConfig.duration
+                    : defaultDurationForModel(next)
+                  updateVideoGenConfig({
+                    model: next,
+                    duration: nextDur,
+                    referenceImageIds: clampRefs(videoGenConfig.referenceImageIds),
+                  })
+                }}
+              >
+                {APIMART_VIDEO_MODEL_OPTIONS.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <button
+              type="button"
+              disabled={busy || !apiKeyOk || !promptHasContent}
+              className={GEN_PANEL_GENERATE_BTN_CLASS}
+              onClick={() => {
+                const prompt = videoGenConfig.prompt.trim()
+                if (!prompt || busy || !apiKeyOk) return
+                const refIds = clampRefs(videoGenConfig.referenceImageIds)
+                const refErr = validateVideoReferenceIds(refIds)
+                if (refErr) {
+                  setVideoRefError(refErr)
+                  return
+                }
+                setVideoRefError(null)
+                setVideoGenPanelOpen(false)
+                setSelectedTool('cursor')
+                setBusy(true)
+                void runCanvasVideoGeneration({
+                  viewportEl: canvasViewportRef.current,
+                  prompt,
+                  model: videoGenConfig.model,
+                  ratio: videoGenConfig.ratio,
+                  quality: videoGenConfig.quality,
+                  duration: videoGenConfig.duration,
                   referenceImageIds: clampRefs(videoGenConfig.referenceImageIds),
-                })
+                }).finally(() => setBusy(false))
               }}
             >
-              {APIMART_VIDEO_MODEL_OPTIONS.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="flex items-center gap-1 text-xs text-neutral-600">
-            比例
-            <select
-              className="rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900"
-              value={videoGenConfig.ratio}
-              onChange={(e) =>
-                updateVideoGenConfig({ ratio: e.target.value as VideoGenRatio })
-              }
-            >
-              {VIDEO_RATIOS.map((r) => (
-                <option key={r.value} value={r.value}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="flex items-center gap-1 text-xs text-neutral-600">
-            分辨率
-            <select
-              className="rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900"
-              value={videoGenConfig.quality}
-              onChange={(e) =>
-                updateVideoGenConfig({ quality: e.target.value as VideoQuality })
-              }
-              title="各模型支持不同档位；不支持的选项会在请求时自动降级（见 console）"
-            >
-              {QUALITY_OPTIONS.map((q) => (
-                <option key={q.value} value={q.value} title={q.title}>
-                  {q.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="flex items-center gap-1 text-xs text-neutral-600">
-            时长（秒）
-            <select
-              className="rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900"
-              value={videoGenConfig.duration}
-              onChange={(e) =>
-                updateVideoGenConfig({ duration: Number(e.target.value) })
-              }
-            >
-              {durationOptions.map((d) => (
-                <option key={d} value={d}>
-                  {d}s
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <button
-            type="button"
-            disabled={busy || !apiKeyOk}
-            className="ml-auto inline-flex items-center gap-1.5 rounded bg-neutral-900 px-4 py-2 text-xs font-medium text-white hover:bg-neutral-800 disabled:opacity-40"
-            onClick={() => {
-              const prompt = videoGenConfig.prompt.trim()
-              if (!prompt || busy || !apiKeyOk) return
-              const refIds = clampRefs(videoGenConfig.referenceImageIds)
-              const refErr = validateVideoReferenceIds(refIds)
-              if (refErr) {
-                setVideoRefError(refErr)
-                return
-              }
-              setVideoRefError(null)
-              setVideoGenPanelOpen(false)
-              setSelectedTool('cursor')
-              setBusy(true)
-              void runCanvasVideoGeneration({
-                viewportEl: canvasViewportRef.current,
-                prompt,
-                model: videoGenConfig.model,
-                ratio: videoGenConfig.ratio,
-                quality: videoGenConfig.quality,
-                duration: videoGenConfig.duration,
-                referenceImageIds: clampRefs(videoGenConfig.referenceImageIds),
-              }).finally(() => setBusy(false))
-            }}
-          >
-            {busy ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-            ) : (
-              <Zap className="h-4 w-4" aria-hidden strokeWidth={2} />
-            )}
-            生成视频
-          </button>
+              {busy ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              ) : (
+                <Zap className="h-4 w-4" aria-hidden strokeWidth={2} />
+              )}
+              生成
+            </button>
+          </div>
         </div>
       </div>
     </div>

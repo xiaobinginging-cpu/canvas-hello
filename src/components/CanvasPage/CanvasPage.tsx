@@ -233,7 +233,7 @@ export default function CanvasPage() {
           />
           <ImageGenPanel canvasViewportRef={canvasViewportRef} />
           <VideoGenPanel canvasViewportRef={canvasViewportRef} />
-          <PromptGenPanel />
+          <PromptGenPanel canvasViewportRef={canvasViewportRef} />
         </div>
       </div>
 

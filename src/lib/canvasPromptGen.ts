@@ -9,6 +9,8 @@ import { useProjectStore } from '../store/useStore.ts'
 const DEFAULT_CARD_W = 400
 const DEFAULT_CARD_H = 300
 
+const PLACEHOLDER_TEXT = '生成中…'
+
 export async function runCanvasPromptGeneration(opts: {
   api: PromptGenAPI
   model: PromptGenModel
@@ -19,12 +21,58 @@ export async function runCanvasPromptGeneration(opts: {
   const imageCount = imageIds.length
   console.log(`[prompt-gen] start api=${api} model=${model} imageCount=${imageCount}`)
 
-  const refs = await collectReferenceBlobs(imageIds)
-  const blobs = refs.map((r) => r.blob)
-  if (blobs.length === 0) {
-    const err = new Error('No image blobs available for prompt generation')
-    console.error('[prompt-gen] error →', err)
-    throw err
+  const st0 = useProjectStore.getState()
+  const canvas = st0.currentProjectCanvas
+  const firstId = imageIds[0]
+  const anchor = canvas?.images.find((i) => i.id === firstId)
+  const x = anchor ? anchor.position.x + anchor.size.w + 30 : 120
+  const y = anchor ? anchor.position.y : 120
+
+  const now = Date.now()
+  const cardId = nanoid()
+  const source: TextCard['source'] = {
+    kind: 'prompt-gen',
+    sourceImageIds: [...imageIds],
+    api,
+    model,
+    instruction: instruction?.trim() ? instruction.trim() : undefined,
+    generatedAt: now,
+  }
+
+  const placeholderCard: TextCard = {
+    id: cardId,
+    x,
+    y,
+    width: DEFAULT_CARD_W,
+    height: DEFAULT_CARD_H,
+    text: PLACEHOLDER_TEXT,
+    source,
+    createdAt: now,
+  }
+
+  st0.addTextCard(placeholderCard)
+
+  const instrTrim = instruction?.trim()
+  let blobs: Blob[] = []
+  if (imageIds.length > 0) {
+    const refs = await collectReferenceBlobs(imageIds)
+    blobs = refs.map((r) => r.blob)
+    if (blobs.length === 0) {
+      const msg = '无法加载参考图'
+      console.error('[prompt-gen] error →', msg)
+      useProjectStore.getState().patchTextCard(cardId, { text: `生成失败：${msg}` })
+      await persistCanvasNow()
+      useProjectStore.getState().clearPromptGenImageIds()
+      return
+    }
+  }
+
+  if (blobs.length === 0 && !instrTrim) {
+    const msg = '需要参考图或自定义 instruction'
+    useProjectStore.getState().patchTextCard(cardId, { text: `生成失败：${msg}` })
+    await persistCanvasNow()
+    useProjectStore.getState().clearPromptGenImageIds()
+    return
   }
 
   let text: string
@@ -38,43 +86,19 @@ export async function runCanvasPromptGeneration(opts: {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     console.error('[prompt-gen] error →', msg)
-    throw e
+    useProjectStore.getState().patchTextCard(cardId, { text: `生成失败：${msg}` })
+    await persistCanvasNow()
+    useProjectStore.getState().clearPromptGenImageIds()
+    return
   }
 
   console.log(`[prompt-gen] api response received textLength=${text.length}`)
 
-  const state = useProjectStore.getState()
-  const canvas = state.currentProjectCanvas
-  const firstId = imageIds[0]
-  const anchor = canvas?.images.find((i) => i.id === firstId)
-  const x = anchor ? anchor.position.x + anchor.size.w + 30 : 120
-  const y = anchor ? anchor.position.y : 120
+  useProjectStore.getState().patchTextCard(cardId, { text })
 
-  const now = Date.now()
-  const card: TextCard = {
-    id: nanoid(),
-    x,
-    y,
-    width: DEFAULT_CARD_W,
-    height: DEFAULT_CARD_H,
-    text,
-    source: {
-      kind: 'prompt-gen',
-      sourceImageIds: [...imageIds],
-      api,
-      model,
-      instruction: instruction?.trim() ? instruction.trim() : undefined,
-      generatedAt: now,
-    },
-    createdAt: now,
-  }
-
-  state.addTextCard(card)
-
-  console.log(`[prompt-gen] text card created id=${card.id} position=(${card.x},${card.y})`)
+  console.log(`[prompt-gen] text card filled id=${cardId}`)
 
   await persistCanvasNow()
 
-  state.clearPromptGenImageIds()
-  state.setSelectedTool('cursor')
+  useProjectStore.getState().clearPromptGenImageIds()
 }

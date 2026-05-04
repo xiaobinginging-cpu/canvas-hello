@@ -195,10 +195,10 @@ export interface ProjectStoreState {
 
   /** In-canvas multi-select for image-gen / video-gen reference images (从画布选择). */
   isCanvasSelectionMode: boolean
-  /** 合并参考图时写入 image-gen 还是 video-gen 表单。 */
-  canvasReferenceTarget: 'image-gen' | 'video-gen' | null
+  /** 合并参考图时写入 image-gen / video-gen / prompt-gen 表单。 */
+  canvasReferenceTarget: 'image-gen' | 'video-gen' | 'prompt-gen' | null
   canvasSelectionIds: string[]
-  enterCanvasSelectionMode: (target?: 'image-gen' | 'video-gen') => void
+  enterCanvasSelectionMode: (target?: 'image-gen' | 'video-gen' | 'prompt-gen') => void
   toggleCanvasSelection: (imageId: string) => void
   commitCanvasSelection: () => void
   cancelCanvasSelection: () => void
@@ -377,7 +377,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
   canvasReferenceTarget: null,
   canvasSelectionIds: [],
 
-  enterCanvasSelectionMode: (target = 'image-gen') =>
+  enterCanvasSelectionMode: (target: 'image-gen' | 'video-gen' | 'prompt-gen' = 'image-gen') =>
     set({
       isCanvasSelectionMode: true,
       canvasReferenceTarget: target,
@@ -398,6 +398,16 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
   commitCanvasSelection: () => {
     const s = get()
     const target = s.canvasReferenceTarget ?? 'image-gen'
+    if (target === 'prompt-gen') {
+      const merged = [...new Set([...s.promptGenImageIds, ...s.canvasSelectionIds])]
+      set({
+        promptGenImageIds: merged,
+        isCanvasSelectionMode: false,
+        canvasSelectionIds: [],
+        canvasReferenceTarget: null,
+      })
+      return
+    }
     const merged = [
       ...new Set([
         ...(target === 'video-gen'

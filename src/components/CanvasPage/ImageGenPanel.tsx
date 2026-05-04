@@ -10,7 +10,10 @@ import { hasGoogleApiKey } from '../../lib/ai.ts'
 import { runCanvasImageGeneration } from '../../lib/canvasGeneration.ts'
 import { useProjectStore } from '../../store/useStore.ts'
 import type { ImageGenRatio, ImageGenResolution } from '../../store/useStore.ts'
+import { GEN_PANEL_GENERATE_BTN_CLASS } from './genPanelStyles.ts'
 import ReferenceImagePicker from './ReferenceImagePicker.tsx'
+import ReferenceImageThumb from './ReferenceImageThumb.tsx'
+import ReferenceSelectionBar from './ReferenceSelectionBar.tsx'
 
 const RATIOS: { value: ImageGenRatio; label: string }[] = [
   { value: '16:9', label: '16:9' },
@@ -44,43 +47,6 @@ const GOOGLE_MODELS: { value: string; label: string }[] = [
   },
 ]
 
-function ImageGenSelectionBar() {
-  const canvasSelectionIds = useProjectStore((s) => s.canvasSelectionIds)
-  const commitCanvasSelection = useProjectStore((s) => s.commitCanvasSelection)
-  const cancelCanvasSelection = useProjectStore((s) => s.cancelCanvasSelection)
-  const n = canvasSelectionIds.length
-
-  return (
-    <div
-      data-no-canvas-pan
-      className="pointer-events-auto fixed bottom-16 left-1/2 z-[160] w-[min(96vw,720px)] -translate-x-1/2 rounded-lg border border-neutral-200 bg-white font-mono shadow-lg"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-xs text-neutral-800">
-        <p className="min-w-0 flex-1 text-neutral-600">
-          选择参考图中… 点击画布图片选择
-        </p>
-        <span className="shrink-0 tabular-nums text-neutral-500">已选 {n} 张</span>
-        <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-neutral-800 hover:bg-neutral-50"
-            onClick={() => cancelCanvasSelection()}
-          >
-            取消
-          </button>
-          <button
-            type="button"
-            className="rounded bg-neutral-900 px-3 py-1.5 text-white hover:bg-neutral-800"
-            onClick={() => commitCanvasSelection()}
-          >
-            完成 {n} 张
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 export default function ImageGenPanel({
   canvasViewportRef,
 }: {
@@ -106,11 +72,12 @@ export default function ImageGenPanel({
 
   const refTarget = canvasReferenceTarget ?? 'image-gen'
   if (isCanvasSelectionMode && refTarget === 'image-gen') {
-    return <ImageGenSelectionBar />
+    return <ReferenceSelectionBar context="image-gen" />
   }
 
   if (!imageGenPanelOpen) return null
 
+  const promptHasContent = imageGenConfig.prompt.trim() !== ''
   const apiKeyOk =
     imageGenConfig.api === 'google'
       ? hasGoogleApiKey()
@@ -147,7 +114,7 @@ export default function ImageGenPanel({
           {imageGenConfig.referenceImageIds.length > 0 ? (
             <div className="flex flex-wrap items-center gap-2">
               {imageGenConfig.referenceImageIds.map((rid) => (
-                <RefThumb key={rid} id={rid} onRemove={() => removeRef(rid)} />
+                <ReferenceImageThumb key={rid} id={rid} onRemove={() => removeRef(rid)} />
               ))}
             </div>
           ) : null}
@@ -160,160 +127,147 @@ export default function ImageGenPanel({
           onChange={(e) => updateImageGenConfig({ prompt: e.target.value })}
         />
 
-        <div className="flex flex-wrap items-center gap-2 border-t border-neutral-100 pt-2">
-          <label className="flex items-center gap-1 text-xs text-neutral-600">
-            比例
-            <select
-              className="rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900"
-              value={imageGenConfig.ratio}
-              onChange={(e) =>
-                updateImageGenConfig({ ratio: e.target.value as ImageGenRatio })
-              }
-            >
-              {RATIOS.map((r) => (
-                <option key={r.value} value={r.value}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="flex items-center gap-1 text-xs text-neutral-600">
-            分辨率
-            <select
-              className="rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900"
-              value={imageGenConfig.resolution}
-              onChange={(e) =>
-                updateImageGenConfig({
-                  resolution: e.target.value as ImageGenResolution,
-                })
-              }
-            >
-              {RESOLUTIONS.map((r) => (
-                <option key={r.value} value={r.value}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="flex items-center gap-1 text-xs text-neutral-600">
-            数量
-            <select
-              className="rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900"
-              value={imageGenConfig.count}
-              onChange={(e) =>
-                updateImageGenConfig({ count: Number(e.target.value) as 1 | 2 | 4 })
-              }
-            >
-              {COUNTS.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="flex items-center gap-1 text-xs text-neutral-600">
-            API
-            <select
-              className="rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900"
-              value={imageGenConfig.api}
-              onChange={(e) => {
-                const nextApi = e.target.value as 'google' | 'apimart'
-                if (nextApi === 'apimart') {
-                  updateImageGenConfig({
-                    api: 'apimart',
-                    model: DEFAULT_APIMART_MODEL,
-                  })
-                } else {
-                  const nextModel = GOOGLE_MODELS.some((m) => m.value === imageGenConfig.model)
-                    ? imageGenConfig.model
-                    : GOOGLE_MODELS[0].value
-                  updateImageGenConfig({ api: 'google', model: nextModel })
+        <div className="flex flex-col gap-2 border-t border-neutral-100 pt-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-1 text-xs text-neutral-600">
+              比例
+              <select
+                className="min-w-[120px] rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900"
+                value={imageGenConfig.ratio}
+                onChange={(e) =>
+                  updateImageGenConfig({ ratio: e.target.value as ImageGenRatio })
                 }
-              }}
-            >
-              <option value="google">Google</option>
-              <option value="apimart">APIMart</option>
-              <option value="kimi" disabled title="Kimi 仅用于提示词生成">
-                Kimi
-              </option>
-            </select>
-          </label>
-
-          <label className="flex min-w-0 flex-1 items-center gap-1 text-xs text-neutral-600">
-            模型
-            <select
-              className="min-w-0 max-w-full flex-1 rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900"
-              value={
-                imageGenConfig.api === 'apimart'
-                  ? coerceApimartModelId(imageGenConfig.model)
-                  : imageGenConfig.model
-              }
-              onChange={(e) => updateImageGenConfig({ model: e.target.value })}
-            >
-              {(imageGenConfig.api === 'apimart' ? APIMART_IMAGE_MODEL_OPTIONS : GOOGLE_MODELS).map(
-                (m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
+              >
+                {RATIOS.map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {r.label}
                   </option>
-                ),
-              )}
-            </select>
-          </label>
+                ))}
+              </select>
+            </label>
 
-          <button
-            type="button"
-            disabled={busy || !apiKeyOk}
-            className="ml-auto inline-flex items-center gap-1.5 rounded bg-neutral-900 px-4 py-2 text-xs font-medium text-white hover:bg-neutral-800 disabled:opacity-40"
-            onClick={() => {
-              const prompt = imageGenConfig.prompt.trim()
-              if (!prompt || busy || !apiKeyOk) return
-              setImageGenPanelOpen(false)
-              setSelectedTool('cursor')
-              setBusy(true)
-              void runCanvasImageGeneration({
-                viewportEl: canvasViewportRef.current,
-                prompt,
-                model:
+            <label className="flex items-center gap-1 text-xs text-neutral-600">
+              分辨率
+              <select
+                className="min-w-[120px] rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900"
+                value={imageGenConfig.resolution}
+                onChange={(e) =>
+                  updateImageGenConfig({
+                    resolution: e.target.value as ImageGenResolution,
+                  })
+                }
+              >
+                {RESOLUTIONS.map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex items-center gap-1 text-xs text-neutral-600">
+              数量
+              <select
+                className="min-w-[120px] rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900"
+                value={imageGenConfig.count}
+                onChange={(e) =>
+                  updateImageGenConfig({ count: Number(e.target.value) as 1 | 2 | 4 })
+                }
+              >
+                {COUNTS.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-1 text-xs text-neutral-600">
+              API
+              <select
+                className="min-w-[120px] rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900"
+                value={imageGenConfig.api}
+                onChange={(e) => {
+                  const nextApi = e.target.value as 'google' | 'apimart'
+                  if (nextApi === 'apimart') {
+                    updateImageGenConfig({
+                      api: 'apimart',
+                      model: DEFAULT_APIMART_MODEL,
+                    })
+                  } else {
+                    const nextModel = GOOGLE_MODELS.some((m) => m.value === imageGenConfig.model)
+                      ? imageGenConfig.model
+                      : GOOGLE_MODELS[0].value
+                    updateImageGenConfig({ api: 'google', model: nextModel })
+                  }
+                }}
+              >
+                <option value="google">Google</option>
+                <option value="apimart">APIMart</option>
+                <option value="kimi" disabled title="Kimi 仅用于提示词生成">
+                  Kimi
+                </option>
+              </select>
+            </label>
+
+            <label className="flex min-w-0 flex-1 items-center gap-1 text-xs text-neutral-600">
+              模型
+              <select
+                className="min-w-[min(100%,160px)] max-w-full flex-1 rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900 sm:min-w-[160px]"
+                value={
                   imageGenConfig.api === 'apimart'
                     ? coerceApimartModelId(imageGenConfig.model)
-                    : imageGenConfig.model,
-                ratio: imageGenConfig.ratio,
-                resolution: imageGenConfig.resolution,
-                count: imageGenConfig.count,
-                referenceImageIds: imageGenConfig.referenceImageIds,
-                api: imageGenConfig.api,
-              }).finally(() => setBusy(false))
-            }}
-          >
-            {busy ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-            ) : (
-              <Zap className="h-4 w-4" aria-hidden strokeWidth={2} />
-            )}
-            生成
-          </button>
+                    : imageGenConfig.model
+                }
+                onChange={(e) => updateImageGenConfig({ model: e.target.value })}
+              >
+                {(imageGenConfig.api === 'apimart' ? APIMART_IMAGE_MODEL_OPTIONS : GOOGLE_MODELS).map(
+                  (m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+
+            <button
+              type="button"
+              disabled={busy || !apiKeyOk || !promptHasContent}
+              className={GEN_PANEL_GENERATE_BTN_CLASS}
+              onClick={() => {
+                const prompt = imageGenConfig.prompt.trim()
+                if (!prompt || busy || !apiKeyOk) return
+                setImageGenPanelOpen(false)
+                setSelectedTool('cursor')
+                setBusy(true)
+                void runCanvasImageGeneration({
+                  viewportEl: canvasViewportRef.current,
+                  prompt,
+                  model:
+                    imageGenConfig.api === 'apimart'
+                      ? coerceApimartModelId(imageGenConfig.model)
+                      : imageGenConfig.model,
+                  ratio: imageGenConfig.ratio,
+                  resolution: imageGenConfig.resolution,
+                  count: imageGenConfig.count,
+                  referenceImageIds: imageGenConfig.referenceImageIds,
+                  api: imageGenConfig.api,
+                }).finally(() => setBusy(false))
+              }}
+            >
+              {busy ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              ) : (
+                <Zap className="h-4 w-4" aria-hidden strokeWidth={2} />
+              )}
+              生成
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  )
-}
-
-function RefThumb({ id, onRemove }: { id: string; onRemove: () => void }) {
-  const url = useProjectStore((s) => s.imageObjectUrls.get(id))
-  return (
-    <div className="relative h-12 w-12 overflow-hidden rounded border border-neutral-200 bg-neutral-100">
-      {url ? <img src={url} alt="" className="h-full w-full object-cover" /> : null}
-      <button
-        type="button"
-        className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-neutral-800 text-[10px] text-white shadow"
-        onClick={onRemove}
-        title="移除"
-      >
-        ✕
-      </button>
     </div>
   )
 }

@@ -142,27 +142,42 @@ export default function TextCardItem({ card }: { card: TextCard }) {
         data-text-card-item
         className="flex h-full w-full min-h-0 cursor-move flex-col"
       >
-        <div className="relative mb-2 h-5 shrink-0">
-          <div className="pointer-events-none flex items-center gap-1 px-0.5 font-mono text-[11px] text-neutral-500 select-none">
-            <span aria-hidden>≡</span>
-            <span>Text</span>
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <div
+            className="absolute left-0 z-[2]"
+            style={{
+              bottom: '100%',
+              marginBottom: 4,
+            }}
+          >
+            <div className="relative">
+              <div
+                className="pointer-events-none inline-flex items-center gap-1 px-0.5 font-mono text-[11px] text-neutral-500 select-none"
+                style={{
+                  transform: `scale(${invCanvas})`,
+                  transformOrigin: 'bottom left',
+                }}
+              >
+                <span aria-hidden>≡</span>
+                <span>Text</span>
+              </div>
+              {!isEditing ? (
+                <div
+                  className="absolute inset-0 z-[1] cursor-move"
+                  aria-hidden
+                  onMouseDown={() => setSelectedTextCardId(card.id)}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation()
+                    beginEditFromDoubleClick()
+                  }}
+                />
+              ) : null}
+            </div>
           </div>
-          {!isEditing ? (
-            <div
-              className="absolute inset-0 z-[1] cursor-move"
-              aria-hidden
-              onMouseDown={() => setSelectedTextCardId(card.id)}
-              onDoubleClick={(e) => {
-                e.stopPropagation()
-                beginEditFromDoubleClick()
-              }}
-            />
-          ) : null}
-        </div>
 
-        <div
-          className={`relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-[#FAFAFA] font-mono shadow-[0_1px_3px_rgba(0,0,0,0.06)] ${cardBorderCls}`}
-        >
+          <div
+            className={`relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-[#FAFAFA] font-mono shadow-[0_1px_3px_rgba(0,0,0,0.06)] ${cardBorderCls}`}
+          >
           {selected && !isEditing ? (
             <div
               className="no-rnd-drag absolute right-2 top-2 z-20 flex gap-1"
@@ -243,6 +258,7 @@ export default function TextCardItem({ card }: { card: TextCard }) {
               </div>
             </>
           )}
+          </div>
         </div>
       </div>
     </Rnd>

@@ -66,6 +66,30 @@ export function hasKimiApiKey(): boolean {
   return typeof k === 'string' && k.trim() !== ''
 }
 
+async function generatePromptTextOnly(opts: {
+  api: PromptGenAPI
+  model: PromptGenModel
+  instruction: string
+}): Promise<string> {
+  const { api, model, instruction } = opts
+
+  if (api === 'google') {
+    const genModel = google.getGenerativeModel({ model })
+    const result = await genModel.generateContent(instruction)
+    const text = result.response.text().trim()
+    if (!text) throw new Error('Google returned empty text')
+    return text
+  }
+
+  const completion = await kimi.chat.completions.create({
+    model,
+    messages: [{ role: 'user', content: instruction }],
+  })
+  const text = completion.choices[0]?.message?.content?.trim() ?? ''
+  if (!text) throw new Error('Kimi returned empty text')
+  return text
+}
+
 export async function generatePromptFromImages(opts: {
   api: PromptGenAPI
   model: PromptGenModel
@@ -73,12 +97,17 @@ export async function generatePromptFromImages(opts: {
   instruction?: string
 }): Promise<string> {
   const { api, model, imageBlobs } = opts
+  const instructionTrim = opts.instruction?.trim()
+
   if (imageBlobs.length === 0) {
-    throw new Error('generatePromptFromImages: imageBlobs is empty')
+    if (!instructionTrim) {
+      throw new Error('generatePromptFromImages: need images or a non-empty instruction')
+    }
+    return generatePromptTextOnly({ api, model, instruction: instructionTrim })
   }
 
   const instruction =
-    opts.instruction?.trim() || defaultInstructionForImageCount(imageBlobs.length)
+    instructionTrim || defaultInstructionForImageCount(imageBlobs.length)
 
   if (api === 'google') {
     const genModel = google.getGenerativeModel({ model })

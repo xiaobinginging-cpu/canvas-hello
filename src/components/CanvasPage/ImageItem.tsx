@@ -25,11 +25,6 @@ export default function ImageItem({ image }: { image: CanvasImage }) {
   const isCanvasSelectionMode = useProjectStore((s) => s.isCanvasSelectionMode)
   const canvasSelectionIds = useProjectStore((s) => s.canvasSelectionIds)
   const toggleCanvasSelection = useProjectStore((s) => s.toggleCanvasSelection)
-  const selectedTool = useProjectStore((s) => s.selectedTool)
-  const promptGenImageIds = useProjectStore((s) => s.promptGenImageIds)
-  const togglePromptGenImageId = useProjectStore((s) => s.togglePromptGenImageId)
-
-  const isPromptGenPickMode = selectedTool === 'prompt-gen'
   const selected = selectedImageId === image.id
   /** Asset fetch from GitHub failed (does not persist to canvas.json). */
   const [assetFetchFailed, setAssetFetchFailed] = useState(false)
@@ -117,8 +112,6 @@ export default function ImageItem({ image }: { image: CanvasImage }) {
     Boolean(displayUrl)
 
   const inRefSelection = canvasSelectionIds.includes(image.id)
-  const inPromptGenPick = promptGenImageIds.includes(image.id)
-
   /** Map screen-constant UI (toolbar, outline, placeholders) through canvas zoom. */
   const invCanvas = 1 / canvasScale
   const outlineBorderPx = invCanvas
@@ -128,16 +121,16 @@ export default function ImageItem({ image }: { image: CanvasImage }) {
     <Rnd
       scale={canvasScale}
       cancel=".no-rnd-drag"
-      disableDragging={isCanvasSelectionMode || isPromptGenPickMode}
+      disableDragging={isCanvasSelectionMode}
       enableResizing={false}
       size={{ width: image.size.w, height: image.size.h }}
       position={{ x: image.position.x, y: image.position.y }}
       className="!pointer-events-auto"
       style={{
         zIndex:
-          (isCanvasSelectionMode && inRefSelection) || (isPromptGenPickMode && inPromptGenPick)
+          isCanvasSelectionMode && inRefSelection
             ? 25
-            : selected && !isCanvasSelectionMode && !isPromptGenPickMode
+            : selected && !isCanvasSelectionMode
               ? 20
               : 2,
       }}
@@ -155,7 +148,7 @@ export default function ImageItem({ image }: { image: CanvasImage }) {
       }}
     >
       <div data-image-item className="relative h-full w-full">
-        {selected && !isCanvasSelectionMode && !isPromptGenPickMode ? (
+        {selected && !isCanvasSelectionMode ? (
           <>
             <div
               className="pointer-events-none absolute inset-0 z-10"
@@ -210,8 +203,7 @@ export default function ImageItem({ image }: { image: CanvasImage }) {
         {selected &&
         !image.isLoading &&
         !image.uploadError &&
-        !isCanvasSelectionMode &&
-        !isPromptGenPickMode ? (
+        !isCanvasSelectionMode ? (
           <div
             className="pointer-events-auto absolute right-1 top-1 z-[35] origin-top-right"
             style={{ transform: `scale(${invCanvas})` }}
@@ -224,10 +216,9 @@ export default function ImageItem({ image }: { image: CanvasImage }) {
           className={`relative h-full w-full overflow-hidden bg-neutral-100 shadow-sm ${
             image.uploadError ? 'ring-2 ring-red-500' : ''
           } ${
-            (isCanvasSelectionMode || isPromptGenPickMode) && refSelectable
+            isCanvasSelectionMode && refSelectable
               ? `cursor-pointer ring-inset ${
-                  (isCanvasSelectionMode && inRefSelection) ||
-                  (isPromptGenPickMode && inPromptGenPick)
+                  inRefSelection
                     ? 'ring-2 ring-neutral-900'
                     : 'ring-2 ring-transparent hover:ring-neutral-400'
                 }`
@@ -241,25 +232,10 @@ export default function ImageItem({ image }: { image: CanvasImage }) {
               }
               return
             }
-            if (isPromptGenPickMode) {
-              if (refSelectable) {
-                e.stopPropagation()
-                togglePromptGenImageId(image.id)
-              }
-              return
-            }
             setSelectedImage(image.id)
           }}
         >
           {isCanvasSelectionMode && refSelectable && inRefSelection ? (
-            <span
-              className="pointer-events-none absolute right-1 top-1 z-20 flex h-5 w-5 items-center justify-center rounded-sm bg-neutral-900 text-[10px] leading-none text-white shadow"
-              aria-hidden
-            >
-              ✓
-            </span>
-          ) : null}
-          {isPromptGenPickMode && refSelectable && inPromptGenPick ? (
             <span
               className="pointer-events-none absolute right-1 top-1 z-20 flex h-5 w-5 items-center justify-center rounded-sm bg-neutral-900 text-[10px] leading-none text-white shadow"
               aria-hidden

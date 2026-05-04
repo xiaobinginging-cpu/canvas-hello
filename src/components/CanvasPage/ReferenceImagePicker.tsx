@@ -2,6 +2,9 @@ import { useRef, useState, type RefObject } from 'react'
 import { uploadFilesToCanvas } from '../../lib/canvasUpload.ts'
 import { useProjectStore } from '../../store/useStore.ts'
 
+const VIDEO_REF_HELP =
+  '图生视频参考须为已同步到 GitHub 的图片（路径 assets/…）；上传或生成中的图片请等待保存完成后再从画布选择；也可先用图像生成落盘后选用。'
+
 export default function ReferenceImagePicker({
   canvasViewportRef,
   onAddReferenceIds,
@@ -10,8 +13,8 @@ export default function ReferenceImagePicker({
 }: {
   canvasViewportRef: RefObject<HTMLDivElement | null>
   onAddReferenceIds: (ids: string[]) => void
-  /** 画布多选参考图合并到 image-gen 或 video-gen 表单。 */
-  selectionTarget?: 'image-gen' | 'video-gen'
+  /** 画布多选参考图合并到对应表单。 */
+  selectionTarget?: 'image-gen' | 'video-gen' | 'prompt-gen'
   /** 视频参考须已落盘 GitHub；关闭本地上传入口（仅画布选择）。 */
   allowLocalUpload?: boolean
 }) {
@@ -19,6 +22,9 @@ export default function ReferenceImagePicker({
   const fileRef = useRef<HTMLInputElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const enterCanvasSelectionMode = useProjectStore((s) => s.enterCanvasSelectionMode)
+
+  const pickerTitle =
+    selectionTarget === 'video-gen' ? VIDEO_REF_HELP : undefined
 
   return (
     <div ref={wrapRef} className="relative inline-block">
@@ -46,6 +52,7 @@ export default function ReferenceImagePicker({
 
       <button
         type="button"
+        title={pickerTitle}
         className="no-rnd-drag rounded border border-dashed border-neutral-400 bg-white px-2 py-1.5 text-xs text-neutral-800 hover:bg-neutral-50"
         onClick={() => setMenuOpen((o) => !o)}
       >
@@ -55,7 +62,7 @@ export default function ReferenceImagePicker({
       {menuOpen ? (
         <div
           role="menu"
-          className="absolute left-0 top-full z-[130] mt-1 min-w-[12rem] rounded border border-neutral-200 bg-white py-1 text-left shadow-md"
+          className="absolute left-0 top-full z-[130] mt-1 min-w-[14rem] rounded border border-neutral-200 bg-white py-1 text-left shadow-md"
         >
           {allowLocalUpload ? (
             <button
@@ -81,6 +88,11 @@ export default function ReferenceImagePicker({
           >
             ⊞ 从画布选择
           </button>
+          {selectionTarget === 'video-gen' ? (
+            <p className="border-t border-neutral-100 px-3 pb-2 pt-1 text-[10px] leading-snug text-neutral-500">
+              视频参考仅支持已写入仓库的图片（路径须为 assets/…）；生成中或尚未同步的图不可用。
+            </p>
+          ) : null}
         </div>
       ) : null}
     </div>

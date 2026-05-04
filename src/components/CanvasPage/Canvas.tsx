@@ -37,8 +37,6 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
   const images = canvas?.images ?? EMPTY_IMAGES
   const videos = canvas?.videos ?? EMPTY_VIDEOS
   const textCards = canvas?.textCards ?? EMPTY_TEXT_CARDS
-  const selectedTool = useProjectStore((s) => s.selectedTool)
-  const isPromptGenPickMode = selectedTool === 'prompt-gen'
   const clearSelection = useProjectStore((s) => s.clearSelection)
   const canvasPanX = useProjectStore((s) => s.canvasPanX)
   const canvasPanY = useProjectStore((s) => s.canvasPanY)
@@ -117,10 +115,6 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
   function onViewportMouseDown(e: MouseEvent<HTMLDivElement>) {
     if (e.button !== 0) return
     if (isCanvasSelectionMode) return
-    if (isPromptGenPickMode) {
-      if (!isInteractiveCanvasChild(e.target)) clearSelection()
-      return
-    }
     if (isInteractiveCanvasChild(e.target)) return
 
     panStartRef.current = {
@@ -194,7 +188,7 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
       onDragLeave={onDragLeave}
       onDrop={onDrop}
       style={{
-        cursor: isCanvasSelectionMode || isPromptGenPickMode
+        cursor: isCanvasSelectionMode
           ? isPanning
             ? 'grabbing'
             : 'crosshair'

@@ -1,5 +1,5 @@
-import { Loader2, Zap, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { Zap, X } from 'lucide-react'
+import { useMemo, type RefObject } from 'react'
 import { hasGoogleApiKey } from '../../lib/ai.ts'
 import { runCanvasPromptGeneration } from '../../lib/canvasPromptGen.ts'
 import {
@@ -11,16 +11,24 @@ import {
   type PromptGenModel,
 } from '../../lib/promptGen.ts'
 import { useProjectStore } from '../../store/useStore.ts'
+import { GEN_PANEL_GENERATE_BTN_CLASS } from './genPanelStyles.ts'
+import ReferenceImagePicker from './ReferenceImagePicker.tsx'
+import ReferenceImageThumb from './ReferenceImageThumb.tsx'
+import ReferenceSelectionBar from './ReferenceSelectionBar.tsx'
 
-export default function PromptGenPanel() {
+export default function PromptGenPanel({
+  canvasViewportRef,
+}: {
+  canvasViewportRef: RefObject<HTMLDivElement | null>
+}) {
   const selectedTool = useProjectStore((s) => s.selectedTool)
+  const isCanvasSelectionMode = useProjectStore((s) => s.isCanvasSelectionMode)
+  const canvasReferenceTarget = useProjectStore((s) => s.canvasReferenceTarget)
   const promptGenConfig = useProjectStore((s) => s.promptGenConfig)
   const updatePromptGenConfig = useProjectStore((s) => s.updatePromptGenConfig)
   const promptGenImageIds = useProjectStore((s) => s.promptGenImageIds)
   const setSelectedTool = useProjectStore((s) => s.setSelectedTool)
   const clearPromptGenImageIds = useProjectStore((s) => s.clearPromptGenImageIds)
-
-  const [busy, setBusy] = useState(false)
 
   const open = selectedTool === 'prompt-gen'
 
@@ -32,8 +40,13 @@ export default function PromptGenPanel() {
   const apiKeyOk =
     promptGenConfig.api === 'google' ? hasGoogleApiKey() : hasKimiApiKey()
 
-  const canGenerate =
-    promptGenImageIds.length > 0 && apiKeyOk && !busy
+  const hasReferenceImages = promptGenImageIds.length > 0
+  const hasInstruction = promptGenConfig.instruction.trim() !== ''
+  const canGenerate = apiKeyOk && (hasReferenceImages || hasInstruction)
+
+  if (isCanvasSelectionMode && canvasReferenceTarget === 'prompt-gen') {
+    return <ReferenceSelectionBar context="prompt-gen" />
+  }
 
   if (!open) return null
 
@@ -72,114 +85,102 @@ export default function PromptGenPanel() {
           </p>
         ) : null}
 
-        <div className="flex min-h-[3.25rem] flex-wrap items-start gap-2">
-          {promptGenImageIds.length === 0 ? (
-            <p className="text-xs text-neutral-500">请在画布选择图片…</p>
-          ) : (
+        <div className="flex flex-wrap items-start gap-3">
+          <ReferenceImagePicker
+            canvasViewportRef={canvasViewportRef}
+            selectionTarget="prompt-gen"
+            onAddReferenceIds={(ids) => {
+              const cur = useProjectStore.getState().promptGenImageIds
+              const next = [...new Set([...cur, ...ids])]
+              useProjectStore.setState({ promptGenImageIds: next })
+            }}
+          />
+          {promptGenImageIds.length > 0 ? (
             <div className="flex flex-wrap items-center gap-2">
               {promptGenImageIds.map((id) => (
-                <RefThumb key={id} id={id} onRemove={() => removeThumb(id)} />
+                <ReferenceImageThumb key={id} id={id} onRemove={() => removeThumb(id)} />
               ))}
             </div>
-          )}
+          ) : null}
         </div>
 
-        <label className="block text-xs text-neutral-600">
-          自定义 instruction（可选）
-          <textarea
-            className="mt-1 min-h-[5rem] w-full resize-y rounded border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400"
-            placeholder={DEFAULT_PROMPT_GEN_INSTRUCTION_PLACEHOLDER}
-            value={promptGenConfig.instruction}
-            onChange={(e) => updatePromptGenConfig({ instruction: e.target.value })}
-          />
-        </label>
+        <div className="flex flex-col gap-2 border-t border-neutral-100 pt-2">
+          <label className="block text-xs text-neutral-600">
+            自定义 instruction（可选）
+            <textarea
+              className="mt-1 min-h-[2.75rem] w-full resize-y rounded border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400"
+              placeholder={DEFAULT_PROMPT_GEN_INSTRUCTION_PLACEHOLDER}
+              value={promptGenConfig.instruction}
+              onChange={(e) => updatePromptGenConfig({ instruction: e.target.value })}
+            />
+          </label>
 
-        <div className="flex flex-wrap items-center gap-2 border-t border-neutral-100 pt-2">
-          <label className="flex items-center gap-1 text-xs text-neutral-600">
-            API
-            <select
-              className="rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900"
-              value={promptGenConfig.api}
-              onChange={(e) => {
-                const api = e.target.value as PromptGenAPI
-                const nextValues =
-                  api === 'google'
-                    ? GOOGLE_PROMPT_MODEL_OPTIONS.map((o) => o.value)
-                    : [...KIMI_PROMPT_MODELS]
-                const model = nextValues.includes(promptGenConfig.model as PromptGenModel)
-                  ? (promptGenConfig.model as PromptGenModel)
-                  : nextValues[0]
-                updatePromptGenConfig({ api, model })
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-1 text-xs text-neutral-600">
+              API
+              <select
+                className="min-w-[120px] rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900"
+                value={promptGenConfig.api}
+                onChange={(e) => {
+                  const api = e.target.value as PromptGenAPI
+                  const nextValues =
+                    api === 'google'
+                      ? GOOGLE_PROMPT_MODEL_OPTIONS.map((o) => o.value)
+                      : [...KIMI_PROMPT_MODELS]
+                  const model = nextValues.includes(promptGenConfig.model as PromptGenModel)
+                    ? (promptGenConfig.model as PromptGenModel)
+                    : nextValues[0]
+                  updatePromptGenConfig({ api, model })
+                }}
+              >
+                <option value="google">Google</option>
+                <option value="kimi">Kimi</option>
+              </select>
+            </label>
+
+            <label className="flex min-w-0 flex-1 items-center gap-1 text-xs text-neutral-600">
+              模型
+              <select
+                className="min-w-[min(100%,160px)] max-w-full flex-1 rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900 sm:min-w-[160px]"
+                value={promptGenConfig.model}
+                onChange={(e) =>
+                  updatePromptGenConfig({ model: e.target.value as PromptGenModel })
+                }
+              >
+                {modelsForApi.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <button
+              type="button"
+              disabled={!canGenerate}
+              className={GEN_PANEL_GENERATE_BTN_CLASS}
+              onClick={() => {
+                if (!canGenerate) return
+                const instr = promptGenConfig.instruction.trim()
+                const imageIds = [...promptGenImageIds]
+                const api = promptGenConfig.api
+                const model = promptGenConfig.model
+                setSelectedTool('cursor')
+                clearPromptGenImageIds()
+                void runCanvasPromptGeneration({
+                  api,
+                  model,
+                  imageIds,
+                  instruction: instr ? instr : undefined,
+                })
               }}
             >
-              <option value="google">Google</option>
-              <option value="kimi">Kimi</option>
-            </select>
-          </label>
-
-          <label className="flex min-w-0 flex-1 items-center gap-1 text-xs text-neutral-600">
-            Model
-            <select
-              className="min-w-0 max-w-full flex-1 rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900"
-              value={promptGenConfig.model}
-              onChange={(e) =>
-                updatePromptGenConfig({ model: e.target.value as PromptGenModel })
-              }
-            >
-              {modelsForApi.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <button
-            type="button"
-            disabled={!canGenerate}
-            className="ml-auto inline-flex items-center gap-1.5 rounded bg-neutral-900 px-4 py-2 text-xs font-medium text-white hover:bg-neutral-800 disabled:opacity-40"
-            onClick={() => {
-              if (!canGenerate) return
-              const instr = promptGenConfig.instruction.trim()
-              setBusy(true)
-              void runCanvasPromptGeneration({
-                api: promptGenConfig.api,
-                model: promptGenConfig.model,
-                imageIds: [...promptGenImageIds],
-                instruction: instr ? instr : undefined,
-              })
-                .catch(() => {
-                  /* logged in lib */
-                })
-                .finally(() => setBusy(false))
-            }}
-          >
-            {busy ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-            ) : (
               <Zap className="h-4 w-4" aria-hidden strokeWidth={2} />
-            )}
-            生成
-          </button>
+              生成
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  )
-}
-
-function RefThumb({ id, onRemove }: { id: string; onRemove: () => void }) {
-  const url = useProjectStore((s) => s.imageObjectUrls.get(id))
-  return (
-    <div className="relative h-12 w-12 overflow-hidden rounded border border-neutral-200 bg-neutral-100">
-      {url ? <img src={url} alt="" className="h-full w-full object-cover" /> : null}
-      <button
-        type="button"
-        className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-neutral-800 text-[10px] text-white shadow"
-        onClick={onRemove}
-        title="移除"
-      >
-        ✕
-      </button>
     </div>
   )
 }
