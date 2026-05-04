@@ -2,11 +2,13 @@ import OpenAI from 'openai'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
 function kimiBaseURL(): string {
-  if (!import.meta.env.DEV) return 'https://api.moonshot.cn/v1'
   if (typeof window !== 'undefined' && window.location?.origin) {
     return `${window.location.origin}/api/kimi/v1`
   }
-  return 'http://localhost:5273/api/kimi/v1'
+  if (import.meta.env.DEV) {
+    return 'http://localhost:5273/api/kimi/v1'
+  }
+  return 'https://api.moonshot.cn/v1'
 }
 
 const kimi = new OpenAI({

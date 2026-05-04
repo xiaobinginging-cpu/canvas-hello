@@ -45,10 +45,10 @@ export function coerceApimartModelId(raw: string | undefined): APImartModel {
 }
 
 export function apimartBaseURL(): string {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return `${window.location.origin}/api/apimart/v1`
+  }
   if (import.meta.env.DEV) {
-    if (typeof window !== 'undefined' && window.location?.origin) {
-      return `${window.location.origin}/api/apimart/v1`
-    }
     return 'http://localhost:5273/api/apimart/v1'
   }
   return 'https://api.apimart.ai/v1'
