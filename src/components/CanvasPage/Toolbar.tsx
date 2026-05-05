@@ -1,4 +1,12 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
+import {
+  Clapperboard,
+  Hand,
+  ImagePlus,
+  Type,
+  Upload,
+  Wand2,
+} from 'lucide-react'
 import { createManualTextCardAtViewportCenter } from '../../lib/createManualTextCard.ts'
 import { useProjectStore } from '../../store/useStore.ts'
 import type { CanvasSelectedTool } from '../../store/useStore.ts'
@@ -62,7 +70,7 @@ export default function Toolbar({
 
   return (
     <footer className="relative flex shrink-0 items-center border-t border-neutral-200 bg-[#FAF8F5] px-4 py-2 font-mono">
-      <div className="flex flex-1 flex-wrap items-center justify-center gap-1 sm:justify-start">
+      <div className="flex flex-1 flex-wrap items-center justify-center gap-1">
         <button
           type="button"
           title="选择"
@@ -73,7 +81,7 @@ export default function Toolbar({
             console.log('TODO: select tool (cursor)')
           }}
         >
-          ↘️
+          <Hand size={20} strokeWidth={2} color="#222" />
         </button>
 
         <div ref={uploadWrapRef} className="relative inline-flex">
@@ -87,7 +95,7 @@ export default function Toolbar({
               setUploadOpen((o) => !o)
             }}
           >
-            📁
+            <Upload size={20} strokeWidth={2} color="#222" />
           </button>
           {uploadOpen ? (
             <div
@@ -138,7 +146,7 @@ export default function Toolbar({
             })
           }}
         >
-          🖼️↑
+          <ImagePlus size={20} strokeWidth={2} color="#222" />
         </button>
 
         <button
@@ -161,7 +169,7 @@ export default function Toolbar({
             })
           }}
         >
-          🎬↓
+          <Clapperboard size={20} strokeWidth={2} color="#222" />
         </button>
 
         <button
@@ -180,7 +188,7 @@ export default function Toolbar({
             }
           }}
         >
-          📝→
+          <Wand2 size={20} strokeWidth={2} color="#222" />
         </button>
 
         <button
@@ -197,7 +205,7 @@ export default function Toolbar({
             createManualTextCardAtViewportCenter(canvasViewportRef.current)
           }}
         >
-          ✏️
+          <Type size={20} strokeWidth={2} color="#222" />
         </button>
       </div>
     </footer>
