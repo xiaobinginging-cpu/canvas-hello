@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Settings } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { customAlphabet } from 'nanoid'
 import * as github from '../../lib/github.ts'
@@ -11,6 +12,7 @@ import PATSetup from './PATSetup.tsx'
 import ProjectCard from './ProjectCard.tsx'
 import ProjectGrid from './ProjectGrid.tsx'
 import RenameProjectModal from './RenameProjectModal.tsx'
+import Logo from '../Logo.tsx'
 
 const newProjectId = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyz', 10)
 
@@ -239,18 +241,12 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-svh bg-[#FAF8F5] font-mono text-neutral-900 selection:bg-neutral-200">
-      <header className="flex items-center justify-between border-b border-neutral-200 bg-[#FAF8F5] px-8 py-5">
-        <span className="text-lg font-medium tracking-widest text-neutral-900">CY</span>
+    <div className="flex h-svh min-h-0 flex-col overflow-hidden bg-[#FAF8F5] font-mono text-neutral-900 selection:bg-neutral-200">
+      <header className="flex shrink-0 items-center justify-between border-b border-neutral-200 bg-[#FAF8F5] px-8 py-5">
+        <span className="flex shrink-0 items-center">
+          <Logo variant="solid" size={32} />
+        </span>
         <div className="flex items-center gap-6 text-sm">
-          <button
-            type="button"
-            title="TODO"
-            onClick={() => console.log('TODO: settings')}
-            className="cursor-not-allowed text-neutral-400 opacity-50"
-          >
-            ⚙️ 设置
-          </button>
           <span className="text-neutral-600">{githubLogin ?? '—'}</span>
           <button
             type="button"
@@ -259,10 +255,18 @@ export default function HomePage() {
           >
             退出
           </button>
+          <button
+            type="button"
+            title="设置"
+            disabled
+            className="inline-flex min-w-[2.5rem] cursor-not-allowed items-center justify-center rounded px-3 py-2 font-mono text-lg leading-none text-neutral-300 transition-colors disabled:hover:bg-transparent"
+          >
+            <Settings size={20} strokeWidth={2} color="currentColor" />
+          </button>
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1400px] px-8 pb-16 pt-10 text-left">
+      <main className="mx-auto min-h-0 w-full max-w-[1400px] flex-1 overflow-y-auto px-8 pb-16 pt-10 text-left">
         {loadPhase === 'loading' ? (
           <p className="font-mono text-sm text-neutral-500">加载中…</p>
         ) : null}

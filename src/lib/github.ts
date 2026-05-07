@@ -553,6 +553,33 @@ export async function loadProject(id: string): Promise<LoadedProject> {
   return { meta, canvas }
 }
 
+/**
+ * Reads `project-{id}/canvas.json` only (lighter than {@link loadProject} for library thumbnails).
+ */
+export async function fetchProjectCanvas(projectId: string): Promise<CanvasData> {
+  const octokit = await getAuthenticatedOctokit()
+  await ensureRepo()
+  const owner = await getOwnerLogin(octokit)
+  const branch = await getRepoBranch(octokit, owner)
+  const path = `${PROJECT_PREFIX}${projectId}/canvas.json`
+  try {
+    const { data } = await octokit.rest.repos.getContent({
+      owner,
+      repo: REPO_NAME,
+      path,
+      ref: branch,
+    })
+    if (Array.isArray(data) || data.type !== 'file') {
+      throw new Error(`Not a file: ${path}`)
+    }
+    const json = ghTextContentToString(data.content)
+    return JSON.parse(json) as CanvasData
+  } catch (e) {
+    if (is401(e)) handle401()
+    throw e
+  }
+}
+
 /** Resolve `assets/foo.png` from canvas image src (same rule as canvas upload). Does not import canvasUpload (avoid circular deps). */
 function assetFilenameFromCanvasSrc(src: string): string | null {
   const t = src.trim()

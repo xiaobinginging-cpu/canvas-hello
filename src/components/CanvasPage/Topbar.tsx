@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { Eraser, Settings } from 'lucide-react'
 import * as github from '../../lib/github.ts'
 import { useProjectStore } from '../../store/useStore.ts'
+import Logo from '../Logo.tsx'
 
 export default function Topbar() {
   const projectId = useProjectStore((s) => s.currentProjectId)
@@ -104,7 +106,9 @@ export default function Topbar() {
         >
           {sidebarVisible ? '⟨' : '⟩'}
         </button>
-        <span className="shrink-0 text-lg font-medium tracking-widest text-neutral-900">CY</span>
+        <span className="flex shrink-0 items-center">
+          <Logo variant="outline" size={28} />
+        </span>
         {editing ? (
           <input
             ref={inputRef}
@@ -133,17 +137,17 @@ export default function Topbar() {
           title="清理孤儿"
           disabled={!projectId || !meta || !canvas || cleanupBusy}
           onClick={() => void runCleanupOrphans()}
-          className="rounded p-2 text-lg text-neutral-800 hover:bg-neutral-200/60 disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex min-w-[2.5rem] items-center justify-center rounded px-3 py-2 font-mono text-lg leading-none text-[#222] transition-colors hover:bg-neutral-200/80 disabled:cursor-not-allowed disabled:text-neutral-300 disabled:hover:bg-transparent"
         >
-          🧹
+          <Eraser size={20} strokeWidth={2} color="currentColor" />
         </button>
         <button
           type="button"
           title="设置"
-          onClick={() => console.log('TODO: canvas settings')}
-          className="rounded p-2 text-lg text-neutral-800 hover:bg-neutral-200/60"
+          disabled
+          className="inline-flex min-w-[2.5rem] cursor-not-allowed items-center justify-center rounded px-3 py-2 font-mono text-lg leading-none text-neutral-300 transition-colors disabled:hover:bg-transparent"
         >
-          ⚙️
+          <Settings size={20} strokeWidth={2} color="currentColor" />
         </button>
       </div>
     </header>

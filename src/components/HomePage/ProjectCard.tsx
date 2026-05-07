@@ -1,6 +1,27 @@
+import { useEffect, useRef, useState } from 'react'
+import type { Image as CanvasImage } from '../../types/image.ts'
 import type { ProjectMeta } from '../../types/project'
+import * as github from '../../lib/github.ts'
+import { parseFilenameFromSrc } from '../../lib/canvasUpload.ts'
 import { formatRelativeTimeZh } from '../../lib/formatRelativeTime'
 import InlineSpinner from '../shared/InlineSpinner.tsx'
+
+function pickFirstThumbnailImage(images: CanvasImage[] | undefined): CanvasImage | null {
+  if (!images?.length) return null
+  for (const img of images) {
+    if (img.isLoading) continue
+    if (img.uploadError) continue
+    const s = img.src?.trim() ?? ''
+    if (!s || s === 'pending') continue
+    return img
+  }
+  return null
+}
+
+function isRemoteOrDataSrc(src: string): boolean {
+  const t = src.trim()
+  return t.startsWith('http://') || t.startsWith('https://') || t.startsWith('data:')
+}
 
 export default function ProjectCard({
   meta,
@@ -21,6 +42,57 @@ export default function ProjectCard({
 }) {
   const preview = meta.name.trim().slice(0, 48) || meta.id.slice(0, 12)
 
+  const [thumbUrl, setThumbUrl] = useState<string | null>(null)
+  const blobUrlRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    blobUrlRef.current = null
+    setThumbUrl(null)
+
+    void (async () => {
+      try {
+        const canvas = await github.fetchProjectCanvas(meta.id)
+        if (cancelled) return
+        const first = pickFirstThumbnailImage(canvas.images)
+        if (!first) {
+          setThumbUrl(null)
+          return
+        }
+
+        const raw = first.src.trim()
+        if (isRemoteOrDataSrc(raw)) {
+          setThumbUrl(raw)
+          return
+        }
+
+        const filename = parseFilenameFromSrc(raw)
+        if (!filename) {
+          setThumbUrl(null)
+          return
+        }
+
+        const blob = await github.fetchAsset(meta.id, filename)
+        if (cancelled) return
+        const url = URL.createObjectURL(blob)
+        blobUrlRef.current = url
+        setThumbUrl(url)
+      } catch {
+        if (!cancelled) setThumbUrl(null)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current)
+        blobUrlRef.current = null
+      }
+    }
+  }, [meta.id])
+
+  const showImageThumb = thumbUrl != null && thumbUrl !== ''
+
   return (
     <div className="group relative">
       <button
@@ -29,12 +101,23 @@ export default function ProjectCard({
         className="w-full rounded border border-neutral-300 bg-white text-left transition-colors hover:bg-neutral-50"
       >
         <div
-          className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-neutral-950 px-3"
+          className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-neutral-950 px-3"
           aria-hidden
         >
-          <span className="line-clamp-3 break-all text-center font-mono text-sm leading-snug text-white">
-            {preview}
-          </span>
+          {showImageThumb ? (
+            <>
+              <img src={thumbUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+              <div className="absolute inset-0 flex items-center justify-center bg-black/45 px-3">
+                <span className="line-clamp-3 break-all text-center font-mono text-sm font-medium leading-snug text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]">
+                  {preview}
+                </span>
+              </div>
+            </>
+          ) : (
+            <span className="line-clamp-3 break-all text-center font-mono text-sm leading-snug text-white">
+              {preview}
+            </span>
+          )}
         </div>
         <div className="border-t border-neutral-200 px-3 py-3">
           <div className="truncate font-mono text-sm font-medium text-neutral-900">{meta.name}</div>
