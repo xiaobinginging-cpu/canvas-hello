@@ -7,7 +7,7 @@ import {
   type DragEvent,
   type MouseEvent,
 } from 'react'
-import { Maximize2, Minus, Plus } from 'lucide-react'
+import { CircleDot, Maximize2, Minus, Plus } from 'lucide-react'
 import { uploadFilesToCanvas } from '../../lib/canvasUpload.ts'
 import { useProjectStore } from '../../store/useStore.ts'
 import type { Image as CanvasImage } from '../../types/image.ts'
@@ -46,6 +46,7 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
   const fitCanvasToImages = useProjectStore((s) => s.fitCanvasToImages)
   const isCanvasSelectionMode = useProjectStore((s) => s.isCanvasSelectionMode)
   const showCanvasDots = useProjectStore((s) => s.showCanvasDots)
+  const toggleShowCanvasDots = useProjectStore((s) => s.toggleShowCanvasDots)
 
   const [dropHighlight, setDropHighlight] = useState(false)
   const [isPanning, setIsPanning] = useState(false)
@@ -211,7 +212,7 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
       }`}
     >
       <div
-        className="absolute bottom-4 left-4 z-30 flex items-center gap-1 rounded-md border border-neutral-200/80 bg-white/95 px-1 py-1 font-mono text-xs shadow-sm backdrop-blur-sm"
+        className="absolute bottom-4 right-4 z-30 flex items-center gap-1 rounded-md border border-neutral-200/80 bg-white/95 px-1 py-1 font-mono text-xs shadow-sm backdrop-blur-sm"
         data-canvas-hud
       >
         <button
@@ -250,6 +251,23 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
           }}
         >
           <Maximize2 className="h-4 w-4" strokeWidth={2} />
+        </button>
+        <div className="mx-0.5 h-5 w-px shrink-0 bg-neutral-200/90" aria-hidden />
+        <button
+          type="button"
+          title={showCanvasDots ? '背景波点：开（点击隐藏）' : '背景波点：关（点击显示）'}
+          aria-pressed={showCanvasDots}
+          className={`no-rnd-drag rounded p-1.5 ${
+            showCanvasDots
+              ? 'bg-neutral-200 text-neutral-900 ring-1 ring-neutral-400'
+              : 'text-neutral-700 hover:bg-neutral-100'
+          }`}
+          onClick={(ev) => {
+            ev.stopPropagation()
+            toggleShowCanvasDots()
+          }}
+        >
+          <CircleDot className="h-4 w-4" strokeWidth={2} />
         </button>
       </div>
 

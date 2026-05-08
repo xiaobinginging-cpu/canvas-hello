@@ -1,13 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
-import {
-  CircleDot,
-  Clapperboard,
-  Hand,
-  ImagePlus,
-  Type,
-  Upload,
-  Wand2,
-} from 'lucide-react'
+import { Clapperboard, Hand, ImagePlus, Type, Upload, Wand2 } from 'lucide-react'
 import { createManualTextCardAtViewportCenter } from '../../lib/createManualTextCard.ts'
 import { useProjectStore } from '../../store/useStore.ts'
 import type { CanvasSelectedTool } from '../../store/useStore.ts'
@@ -30,8 +22,6 @@ export default function Toolbar({
   const cancelCanvasSelection = useProjectStore((s) => s.cancelCanvasSelection)
   const clearPromptGenImageIds = useProjectStore((s) => s.clearPromptGenImageIds)
   const setPendingTextCardEditId = useProjectStore((s) => s.setPendingTextCardEditId)
-  const showCanvasDots = useProjectStore((s) => s.showCanvasDots)
-  const toggleShowCanvasDots = useProjectStore((s) => s.toggleShowCanvasDots)
   const [uploadOpen, setUploadOpen] = useState(false)
   const uploadWrapRef = useRef<HTMLDivElement>(null)
 
@@ -67,14 +57,6 @@ export default function Toolbar({
     if (disabled) return `${base} cursor-not-allowed text-neutral-300`
     if (active) return `${base} bg-neutral-200 text-neutral-900 ring-1 ring-neutral-400`
     return `${base} text-neutral-800 hover:bg-neutral-200/80`
-  }
-
-  /** View prefs toggles: “on” uses same pressed chrome as active tools. */
-  function toggleChrome(on: boolean): string {
-    const base =
-      'rounded px-3 py-2 text-lg transition-colors font-mono leading-none min-w-[2.5rem] inline-flex items-center justify-center'
-    if (on) return `${base} bg-neutral-200 text-neutral-900 ring-1 ring-neutral-400`
-    return `${base} text-neutral-500 hover:bg-neutral-200/80`
   }
 
   return (
@@ -213,18 +195,6 @@ export default function Toolbar({
           }}
         >
           <Clapperboard size={20} strokeWidth={2} color="#222" />
-        </button>
-
-        <div className="mx-1 h-6 w-px shrink-0 bg-neutral-200" aria-hidden />
-
-        <button
-          type="button"
-          title={showCanvasDots ? '背景波点：开（点击隐藏）' : '背景波点：关（点击显示）'}
-          aria-pressed={showCanvasDots}
-          className={toggleChrome(showCanvasDots)}
-          onClick={() => toggleShowCanvasDots()}
-        >
-          <CircleDot size={20} strokeWidth={2} color="#222" />
         </button>
       </div>
     </footer>
