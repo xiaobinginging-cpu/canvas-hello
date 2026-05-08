@@ -25,6 +25,8 @@ export interface TextCard {
   width: number
   height: number
   text: string
+  /** 正文基准字号（px）；用于读写一致，避免 WebKit 在内联 style 上残留大号 font-size。 */
+  baseFontSizePx?: number
   /** 缺省视为手工卡（兼容旧数据）。 */
   source?: TextCardSource
   createdAt: number
@@ -83,6 +85,7 @@ export interface VideoItem {
   prompt?: string
   ratio?: string
   referenceImageIds?: string[]
+  /** @deprecated 旧数据；引线已改用 `referenceImageIds`（「+ 加参考图」）。 */
   parentVideoId?: string
   generatedAt?: number
   /** Grok：`quality`；HappyHorse 侧固定 `1080P` 请求，此处可记 `1080p` 便于展示。 */

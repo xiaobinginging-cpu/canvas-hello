@@ -45,6 +45,7 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
   const nudgeCanvasZoom = useProjectStore((s) => s.nudgeCanvasZoom)
   const fitCanvasToImages = useProjectStore((s) => s.fitCanvasToImages)
   const isCanvasSelectionMode = useProjectStore((s) => s.isCanvasSelectionMode)
+  const showCanvasDots = useProjectStore((s) => s.showCanvasDots)
 
   const [dropHighlight, setDropHighlight] = useState(false)
   const [isPanning, setIsPanning] = useState(false)
@@ -196,10 +197,14 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
             ? 'grabbing'
             : 'grab',
         backgroundColor: '#FAF8F5',
-        backgroundImage:
-          'radial-gradient(circle, rgba(0, 0, 0, 0.18) 1.5px, transparent 2px)',
-        backgroundSize: `${VIEWPORT_DOT_SPACING_PX}px ${VIEWPORT_DOT_SPACING_PX}px`,
-        backgroundPosition: `${dotBgX}px ${dotBgY}px`,
+        ...(showCanvasDots
+          ? {
+              backgroundImage:
+                'radial-gradient(circle, rgba(0, 0, 0, 0.18) 1.1px, transparent 1.6px)',
+              backgroundSize: `${VIEWPORT_DOT_SPACING_PX}px ${VIEWPORT_DOT_SPACING_PX}px`,
+              backgroundPosition: `${dotBgX}px ${dotBgY}px`,
+            }
+          : { backgroundImage: 'none' }),
       }}
       className={`relative min-h-0 flex-1 overflow-hidden ${
         dropHighlight ? 'outline outline-2 -outline-offset-2 outline-dashed outline-neutral-400' : ''

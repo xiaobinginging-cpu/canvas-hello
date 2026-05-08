@@ -1,4 +1,4 @@
-import type { Image } from '../types/image.ts'
+import type { Image, ImageMetadata } from '../types/image.ts'
 import type {
   CanvasData,
   TextCard,
@@ -33,11 +33,37 @@ function normalizeTextCardSource(raw: TextCard['source']): TextCardSource | unde
   return { kind: 'manual' }
 }
 
+/**
+ * Normalize persisted lineage metadata for schema compatibility (no canvas connectors).
+ * Migrates legacy single `parentImageId` / `parent` into `parents: [id]` when `parents` absent.
+ */
+export function hydrateImageMetadata(meta: ImageMetadata): ImageMetadata {
+  const raw = meta as ImageMetadata & { parentImageId?: string; parent?: string }
+  const legacyPid = raw.parentImageId?.trim() || raw.parent?.trim()
+
+  let next: ImageMetadata = { ...meta }
+  delete (next as { parentImageId?: string }).parentImageId
+  delete (next as { parent?: string }).parent
+
+  if (Object.prototype.hasOwnProperty.call(raw, 'parents')) {
+    next.parents = Array.isArray(raw.parents)
+      ? raw.parents.map((x) => String(x).trim()).filter(Boolean)
+      : []
+  } else if (legacyPid) {
+    next.parents = [legacyPid]
+  } else {
+    delete next.parents
+  }
+
+  return next
+}
+
 export function normalizeCanvasFromServer(canvas: CanvasData): CanvasData {
   const images: Image[] = []
   for (const img of canvas.images) {
     images.push({
       ...img,
+      metadata: hydrateImageMetadata(img.metadata),
       isLoading: false,
       uploadError: undefined,
     })

@@ -2,6 +2,14 @@ import { Copy } from 'lucide-react'
 import { useState } from 'react'
 import { formatRelativeTimeZh } from '../../lib/formatRelativeTime.ts'
 import { useProjectStore } from '../../store/useStore.ts'
+import type { ImageMetadata } from '../../types/image.ts'
+
+/** Detail-only: same lineage ids as persisted metadata (no canvas connectors). */
+function detailParentSourceDisplay(meta: ImageMetadata): string | undefined {
+  if (meta.parents?.length) return meta.parents.join(', ')
+  const single = meta.parentImageId?.trim() || meta.parent?.trim()
+  return single || undefined
+}
 
 export default function DetailCard() {
   const detailCardImageId = useProjectStore((s) => s.detailCardImageId)
@@ -111,7 +119,7 @@ export default function DetailCard() {
             <DetailRow label="API" value={meta.api} />
             <DetailRow label="尺寸" value={meta.ratio} />
             <DetailRow label="分辨率" value={meta.resolution} />
-            <DetailRow label="同款来源 (parent)" value={meta.parentImageId} />
+            <DetailRow label="同款来源 (parent)" value={detailParentSourceDisplay(meta)} />
             <DetailRow
               label="生成时间"
               value={

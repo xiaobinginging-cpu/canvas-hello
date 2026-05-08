@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import {
+  CircleDot,
   Clapperboard,
   Hand,
   ImagePlus,
@@ -25,12 +26,12 @@ export default function Toolbar({
   const setImageGenPanelOpen = useProjectStore((s) => s.setImageGenPanelOpen)
   const setVideoGenPanelOpen = useProjectStore((s) => s.setVideoGenPanelOpen)
   const updateImageGenConfig = useProjectStore((s) => s.updateImageGenConfig)
-  const setImageGenOriginParentImageId = useProjectStore((s) => s.setImageGenOriginParentImageId)
-  const setVideoGenOriginParentVideoId = useProjectStore((s) => s.setVideoGenOriginParentVideoId)
   const resetVideoGenConfig = useProjectStore((s) => s.resetVideoGenConfig)
   const cancelCanvasSelection = useProjectStore((s) => s.cancelCanvasSelection)
   const clearPromptGenImageIds = useProjectStore((s) => s.clearPromptGenImageIds)
   const setPendingTextCardEditId = useProjectStore((s) => s.setPendingTextCardEditId)
+  const showCanvasDots = useProjectStore((s) => s.showCanvasDots)
+  const toggleShowCanvasDots = useProjectStore((s) => s.toggleShowCanvasDots)
   const [uploadOpen, setUploadOpen] = useState(false)
   const uploadWrapRef = useRef<HTMLDivElement>(null)
 
@@ -66,6 +67,14 @@ export default function Toolbar({
     if (disabled) return `${base} cursor-not-allowed text-neutral-300`
     if (active) return `${base} bg-neutral-200 text-neutral-900 ring-1 ring-neutral-400`
     return `${base} text-neutral-800 hover:bg-neutral-200/80`
+  }
+
+  /** View prefs toggles: “on” uses same pressed chrome as active tools. */
+  function toggleChrome(on: boolean): string {
+    const base =
+      'rounded px-3 py-2 text-lg transition-colors font-mono leading-none min-w-[2.5rem] inline-flex items-center justify-center'
+    if (on) return `${base} bg-neutral-200 text-neutral-900 ring-1 ring-neutral-400`
+    return `${base} text-neutral-500 hover:bg-neutral-200/80`
   }
 
   return (
@@ -128,48 +137,19 @@ export default function Toolbar({
 
         <button
           type="button"
-          title="图像生成器"
-          aria-pressed={selectedTool === 'image-gen'}
-          className={toolClass(selectedTool === 'image-gen')}
+          title="新建文本"
+          aria-pressed={selectedTool === 'text-card'}
+          className={toolClass(selectedTool === 'text-card')}
           onClick={() => {
-            clearPromptGenImageIds()
-            setVideoGenPanelOpen(false)
-            setSelectedTool('image-gen')
-            setImageGenPanelOpen((prev) => {
-              const next = !prev
-              if (next) {
-                updateImageGenConfig({ prompt: '', referenceImageIds: [] })
-                setImageGenOriginParentImageId(null)
-                cancelCanvasSelection()
-              }
-              return next
-            })
-          }}
-        >
-          <ImagePlus size={20} strokeWidth={2} color="#222" />
-        </button>
-
-        <button
-          type="button"
-          title="视频生成器"
-          aria-pressed={selectedTool === 'video-gen'}
-          className={toolClass(selectedTool === 'video-gen')}
-          onClick={() => {
-            clearPromptGenImageIds()
             setImageGenPanelOpen(false)
-            setSelectedTool('video-gen')
-            setVideoGenPanelOpen((prev) => {
-              const next = !prev
-              if (next) {
-                resetVideoGenConfig()
-                setVideoGenOriginParentVideoId(null)
-                cancelCanvasSelection()
-              }
-              return next
-            })
+            setVideoGenPanelOpen(false)
+            cancelCanvasSelection()
+            clearPromptGenImageIds()
+            setSelectedTool('text-card')
+            createManualTextCardAtViewportCenter(canvasViewportRef.current)
           }}
         >
-          <Clapperboard size={20} strokeWidth={2} color="#222" />
+          <Type size={20} strokeWidth={2} color="#222" />
         </button>
 
         <button
@@ -193,19 +173,58 @@ export default function Toolbar({
 
         <button
           type="button"
-          title="新建文本"
-          aria-pressed={selectedTool === 'text-card'}
-          className={toolClass(selectedTool === 'text-card')}
+          title="图像生成器"
+          aria-pressed={selectedTool === 'image-gen'}
+          className={toolClass(selectedTool === 'image-gen')}
           onClick={() => {
-            setImageGenPanelOpen(false)
-            setVideoGenPanelOpen(false)
-            cancelCanvasSelection()
             clearPromptGenImageIds()
-            setSelectedTool('text-card')
-            createManualTextCardAtViewportCenter(canvasViewportRef.current)
+            setVideoGenPanelOpen(false)
+            setSelectedTool('image-gen')
+            setImageGenPanelOpen((prev) => {
+              const next = !prev
+              if (next) {
+                updateImageGenConfig({ prompt: '', referenceImageIds: [] })
+                cancelCanvasSelection()
+              }
+              return next
+            })
           }}
         >
-          <Type size={20} strokeWidth={2} color="#222" />
+          <ImagePlus size={20} strokeWidth={2} color="#222" />
+        </button>
+
+        <button
+          type="button"
+          title="视频生成器"
+          aria-pressed={selectedTool === 'video-gen'}
+          className={toolClass(selectedTool === 'video-gen')}
+          onClick={() => {
+            clearPromptGenImageIds()
+            setImageGenPanelOpen(false)
+            setSelectedTool('video-gen')
+            setVideoGenPanelOpen((prev) => {
+              const next = !prev
+              if (next) {
+                resetVideoGenConfig()
+                cancelCanvasSelection()
+              }
+              return next
+            })
+          }}
+        >
+          <Clapperboard size={20} strokeWidth={2} color="#222" />
+        </button>
+
+        <div className="mx-1 h-6 w-px shrink-0 bg-neutral-200" aria-hidden />
+
+        <button
+          type="button"
+          title={showCanvasDots ? '背景波点：开（点击隐藏）' : '背景波点：关（点击显示）'}
+          aria-pressed={showCanvasDots}
+          className={toggleChrome(showCanvasDots)}
+          onClick={() => toggleShowCanvasDots()}
+        >
+          <CircleDot size={20} strokeWidth={2} color="#222" />
         </button>
       </div>
     </footer>

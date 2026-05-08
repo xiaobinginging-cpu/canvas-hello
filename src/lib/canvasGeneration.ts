@@ -199,9 +199,6 @@ export async function runCanvasVideoGeneration(params: {
   const canvas = state.currentProjectCanvas
   if (!projectId || !meta || !canvas) return
 
-  const originParentVideoId = state.videoGenOriginParentVideoId
-  state.setVideoGenOriginParentVideoId(null)
-
   const { canvasPanX, canvasPanY, canvasScale, addVideo } = state
 
   const maxRef =
@@ -240,7 +237,6 @@ export async function runCanvasVideoGeneration(params: {
     ratio,
     videoQuality: quality,
     referenceImageIds: refIds.length ? [...refIds] : undefined,
-    parentVideoId: originParentVideoId ?? undefined,
     isLoading: true,
     cancelable: true,
   }
@@ -382,9 +378,6 @@ export async function runCanvasImageGeneration(params: {
   const canvas = state.currentProjectCanvas
   if (!projectId || !meta || !canvas) return
 
-  const originParentImageId = state.imageGenOriginParentImageId
-  state.setImageGenOriginParentImageId(null)
-
   const { canvasPanX, canvasPanY, canvasScale, addImage } = state
 
   const shortLog =
@@ -425,7 +418,7 @@ export async function runCanvasImageGeneration(params: {
         ratio,
         resolution,
         referenceImageIds: referenceImageIds.length ? [...referenceImageIds] : undefined,
-        parentImageId: originParentImageId ?? undefined,
+        parents: [...referenceImageIds],
         generatedAt: Date.now(),
       },
       isLoading: true,

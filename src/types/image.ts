@@ -12,7 +12,7 @@ import type { APIProvider } from './api'
  * 与单张画布图片绑定的元数据。字段是否「必带」由 {@link ImageSource} 决定：
  * - **generated**：见各字段「generated 必带」说明。
  * - **upload**：见「upload」说明。
- * - **reference**：多数可选，用于 lineage / 人工标注。
+ * - **reference**：多数可选，用于人工标注等。
  */
 export interface ImageMetadata {
   /**
@@ -52,10 +52,19 @@ export interface ImageMetadata {
   referenceImageIds?: string[]
 
   /**
-   * 「画同款」时的父图 id，用于血缘 / 版本追踪。
-   * **generated** 在衍生同款时建议带上；upload 可为导入原图的父节点（若产品需要）。
+   * 生成链路血缘 id（与参考图一致）；persisted 兼容字段。**不在画布上绘制连线**，详情浮窗可读。
+   */
+  parents?: string[]
+
+  /**
+   * @deprecated 旧 JSON 单 parent id；加载时迁入 `parents`。详情浮窗可读。
    */
   parentImageId?: string
+
+  /**
+   * @deprecated 个别旧 JSON 的 `parent` 字段；加载与 `parentImageId` 等同。
+   */
+  parent?: string
 
   /**
    * 生成完成时的 Unix 时间戳（ms）。

@@ -1,0 +1,17 @@
+/*
+ * Must load after `./index.css` (see main.tsx) so these rules win over Tailwind layers.
+ * - Children inherit one base font-size from the editor/read-only wrapper (React inline style).
+ * - `!important` beats leftover inline `font-size: 72px` / `line-height: 72px` on nested spans.
+ */
+html body [contenteditable='true'] *,
+html body [contenteditable=''] *,
+[class*='text-card'] *,
+[class*='TextCard'] * {
+  font-size: inherit !important;
+  line-height: 1.5 !important;
+}
+
+html body [contenteditable='true'],
+html body [contenteditable=''] {
+  line-height: 1.5 !important;
+}

@@ -30,7 +30,6 @@ export default function VideoToolbar({
 }) {
   const updateVideoGenConfig = useProjectStore((s) => s.updateVideoGenConfig)
   const setVideoGenPanelOpen = useProjectStore((s) => s.setVideoGenPanelOpen)
-  const setVideoGenOriginParentVideoId = useProjectStore((s) => s.setVideoGenOriginParentVideoId)
   const setSelectedTool = useProjectStore((s) => s.setSelectedTool)
   const cancelCanvasSelection = useProjectStore((s) => s.cancelCanvasSelection)
 
@@ -48,7 +47,6 @@ export default function VideoToolbar({
           : DEFAULT_VIDEO_GEN_CONFIG.duration),
       referenceImageIds: [...(video.referenceImageIds ?? [])],
     })
-    setVideoGenOriginParentVideoId(video.id)
     setVideoGenPanelOpen(true)
     setSelectedTool('video-gen')
   }

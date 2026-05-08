@@ -20,6 +20,7 @@ export default function ImageItem({ image }: { image: CanvasImage }) {
   const selectedImageId = useProjectStore((s) => s.selectedImageId)
   const objectUrl = useProjectStore((s) => s.imageObjectUrls.get(image.id))
   const updateImagePosition = useProjectStore((s) => s.updateImagePosition)
+  const patchImagePositionLive = useProjectStore((s) => s.patchImagePositionLive)
   const setSelectedImage = useProjectStore((s) => s.setSelectedImage)
   const canvasScale = useProjectStore((s) => s.canvasScale)
   const isCanvasSelectionMode = useProjectStore((s) => s.isCanvasSelectionMode)
@@ -143,8 +144,9 @@ export default function ImageItem({ image }: { image: CanvasImage }) {
       onDragStart={() => {
         document.body.style.cursor = 'grabbing'
       }}
-      onDrag={() => {
+      onDrag={(_e, d) => {
         document.body.style.cursor = 'grabbing'
+        patchImagePositionLive(image.id, { x: d.x, y: d.y })
       }}
     >
       <div data-image-item className="relative h-full w-full">

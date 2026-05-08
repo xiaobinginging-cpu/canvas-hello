@@ -20,6 +20,7 @@ export default function VideoItem({ video }: { video: CanvasVideo }) {
   const selectedVideoId = useProjectStore((s) => s.selectedVideoId)
   const objectUrl = useProjectStore((s) => s.videoObjectUrls.get(video.id))
   const updateVideoBounds = useProjectStore((s) => s.updateVideoBounds)
+  const patchVideoBoundsLive = useProjectStore((s) => s.patchVideoBoundsLive)
   const setSelectedVideo = useProjectStore((s) => s.setSelectedVideo)
   const canvasScale = useProjectStore((s) => s.canvasScale)
   const isCanvasSelectionMode = useProjectStore((s) => s.isCanvasSelectionMode)
@@ -123,6 +124,14 @@ export default function VideoItem({ video }: { video: CanvasVideo }) {
         })
         schedulePersistCanvas(projectId, 500)
       }}
+      onResize={(_e, _dir, ref, _delta, position) => {
+        patchVideoBoundsLive(video.id, {
+          x: position.x,
+          y: position.y,
+          width: parseFloat(ref.style.width),
+          height: parseFloat(ref.style.height),
+        })
+      }}
       onResizeStop={(_e, _dir, ref, _delta, position) => {
         if (!projectId) return
         updateVideoBounds(video.id, {
@@ -136,8 +145,14 @@ export default function VideoItem({ video }: { video: CanvasVideo }) {
       onDragStart={() => {
         document.body.style.cursor = 'grabbing'
       }}
-      onDrag={() => {
+      onDrag={(_e, d) => {
         document.body.style.cursor = 'grabbing'
+        patchVideoBoundsLive(video.id, {
+          x: d.x,
+          y: d.y,
+          width: video.width,
+          height: video.height,
+        })
       }}
     >
       <div data-video-item className="relative h-full w-full">

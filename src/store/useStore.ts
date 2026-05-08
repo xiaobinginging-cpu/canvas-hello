@@ -123,10 +123,17 @@ export interface ProjectStoreState {
   addImage: (image: Image) => void
   patchImage: (id: string, patch: Partial<Image>) => void
   updateImagePosition: (id: string, position: { x: number; y: number }) => void
+  /** Drag-only: updates canvas coordinates without bumping project metadata. */
+  patchImagePositionLive: (id: string, position: { x: number; y: number }) => void
   removeImage: (id: string) => void
   addVideo: (video: VideoItem) => void
   patchVideo: (id: string, patch: Partial<VideoItem>) => void
   updateVideoBounds: (
+    id: string,
+    bounds: { x: number; y: number; width: number; height: number },
+  ) => void
+  /** Drag/resize-only: updates canvas bounds without bumping project metadata. */
+  patchVideoBoundsLive: (
     id: string,
     bounds: { x: number; y: number; width: number; height: number },
   ) => void
@@ -156,24 +163,22 @@ export interface ProjectStoreState {
   resetCanvasView: () => void
   fitCanvasToImages: (viewportWidth: number, viewportHeight: number) => void
 
+  /** Viewport dot grid (localStorage). */
+  showCanvasDots: boolean
+  setShowCanvasDots: (v: boolean) => void
+  toggleShowCanvasDots: () => void
+
   imageGenPanelOpen: boolean
   imageGenConfig: ImageGenFormConfig
   setImageGenPanelOpen: (open: boolean | ((prev: boolean) => boolean)) => void
   updateImageGenConfig: (patch: Partial<ImageGenFormConfig>) => void
   resetImageGenConfig: () => void
 
-  /** When set, next batch generation writes `metadata.parentImageId` on new images (画同款). Cleared after run or toolbar reopen. */
-  imageGenOriginParentImageId: string | null
-  setImageGenOriginParentImageId: (id: string | null) => void
-
   videoGenPanelOpen: boolean
   videoGenConfig: VideoGenFormConfig
   setVideoGenPanelOpen: (open: boolean | ((prev: boolean) => boolean)) => void
   updateVideoGenConfig: (patch: Partial<VideoGenFormConfig>) => void
   resetVideoGenConfig: () => void
-  videoGenOriginParentVideoId: string | null
-  setVideoGenOriginParentVideoId: (id: string | null) => void
-
   promptGenConfig: PromptGenFormConfig
   updatePromptGenConfig: (patch: Partial<PromptGenFormConfig>) => void
   resetPromptGenConfig: () => void
@@ -190,7 +195,10 @@ export interface ProjectStoreState {
   setPendingTextCardEditId: (id: string | null) => void
 
   addTextCard: (card: TextCard) => void
-  patchTextCard: (id: string, patch: Partial<Pick<TextCard, 'x' | 'y' | 'width' | 'height' | 'text'>>) => void
+  patchTextCard: (
+    id: string,
+    patch: Partial<Pick<TextCard, 'x' | 'y' | 'width' | 'height' | 'text' | 'baseFontSizePx'>>,
+  ) => void
   removeTextCard: (id: string) => void
 
   /** In-canvas multi-select for image-gen / video-gen reference images (从画布选择). */
@@ -221,6 +229,27 @@ function sortProjectsList(list: ProjectMeta[]): ProjectMeta[] {
   return [...list].sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
+const LS_SHOW_CANVAS_DOTS = 'canvas-hello.v1.showCanvasDots'
+
+function readCanvasPrefBool(key: string, defaultValue: boolean): boolean {
+  if (typeof localStorage === 'undefined') return defaultValue
+  try {
+    const v = localStorage.getItem(key)
+    if (v === null) return defaultValue
+    return v === '1' || v === 'true'
+  } catch {
+    return defaultValue
+  }
+}
+
+function writeCanvasPrefBool(key: string, value: boolean): void {
+  try {
+    localStorage.setItem(key, value ? '1' : '0')
+  } catch {
+    /* ignore */
+  }
+}
+
 export const useProjectStore = create<ProjectStoreState>((set, get) => ({
   projects: [],
   isAuthenticated: ghIsAuthenticated(),
@@ -242,6 +271,19 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
   canvasPanX: 0,
   canvasPanY: 0,
   canvasScale: 1,
+
+  showCanvasDots: readCanvasPrefBool(LS_SHOW_CANVAS_DOTS, true),
+
+  setShowCanvasDots: (v) => {
+    writeCanvasPrefBool(LS_SHOW_CANVAS_DOTS, v)
+    set({ showCanvasDots: v })
+  },
+  toggleShowCanvasDots: () =>
+    set((s) => {
+      const v = !s.showCanvasDots
+      writeCanvasPrefBool(LS_SHOW_CANVAS_DOTS, v)
+      return { showCanvasDots: v }
+    }),
 
   setCanvasPan: (x, y) => set({ canvasPanX: x, canvasPanY: y }),
 
@@ -281,10 +323,6 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
 
   resetImageGenConfig: () => set({ imageGenConfig: { ...DEFAULT_IMAGE_GEN_CONFIG } }),
 
-  imageGenOriginParentImageId: null,
-
-  setImageGenOriginParentImageId: (id) => set({ imageGenOriginParentImageId: id }),
-
   videoGenPanelOpen: false,
   videoGenConfig: { ...DEFAULT_VIDEO_GEN_CONFIG },
   setVideoGenPanelOpen: (open) =>
@@ -296,8 +334,6 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       videoGenConfig: { ...state.videoGenConfig, ...patch },
     })),
   resetVideoGenConfig: () => set({ videoGenConfig: { ...DEFAULT_VIDEO_GEN_CONFIG } }),
-  videoGenOriginParentVideoId: null,
-  setVideoGenOriginParentVideoId: (id) => set({ videoGenOriginParentVideoId: id }),
 
   promptGenConfig: { ...DEFAULT_PROMPT_GEN_CONFIG },
   updatePromptGenConfig: (patch) =>
@@ -552,6 +588,15 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     get().updateProject(s.currentProjectId, { updatedAt: now })
   },
 
+  patchImagePositionLive: (id, position) => {
+    const s = get()
+    if (!s.currentProjectCanvas) return
+    const images = s.currentProjectCanvas.images.map((im) =>
+      im.id === id ? { ...im, position } : im,
+    )
+    set({ currentProjectCanvas: { ...s.currentProjectCanvas, images } })
+  },
+
   removeImage: (id) => {
     const s = get()
     if (!s.currentProjectId || !s.currentProjectMeta || !s.currentProjectCanvas) return
@@ -604,6 +649,17 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       currentProjectMeta: nextMeta,
     })
     get().updateProject(s.currentProjectId, { updatedAt: now })
+  },
+
+  patchVideoBoundsLive: (id, bounds) => {
+    const s = get()
+    if (!s.currentProjectCanvas) return
+    const videos = (s.currentProjectCanvas.videos ?? []).map((v) =>
+      v.id === id
+        ? { ...v, x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }
+        : v,
+    )
+    set({ currentProjectCanvas: { ...s.currentProjectCanvas, videos } })
   },
 
   removeVideo: (id) => {
@@ -693,10 +749,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
           canvasScale: 1,
           imageGenPanelOpen: false,
           imageGenConfig: { ...DEFAULT_IMAGE_GEN_CONFIG },
-          imageGenOriginParentImageId: null,
           videoGenPanelOpen: false,
           videoGenConfig: { ...DEFAULT_VIDEO_GEN_CONFIG },
-          videoGenOriginParentVideoId: null,
           isCanvasSelectionMode: false,
           canvasReferenceTarget: null,
           canvasSelectionIds: [],
@@ -732,10 +786,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
           canvasScale: 1,
           imageGenPanelOpen: false,
           imageGenConfig: { ...DEFAULT_IMAGE_GEN_CONFIG },
-          imageGenOriginParentImageId: null,
           videoGenPanelOpen: false,
           videoGenConfig: { ...DEFAULT_VIDEO_GEN_CONFIG },
-          videoGenOriginParentVideoId: null,
           isCanvasSelectionMode: false,
           canvasReferenceTarget: null,
           canvasSelectionIds: [],
@@ -805,10 +857,8 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         canvasScale: 1,
         imageGenPanelOpen: false,
         imageGenConfig: { ...DEFAULT_IMAGE_GEN_CONFIG },
-        imageGenOriginParentImageId: null,
         videoGenPanelOpen: false,
         videoGenConfig: { ...DEFAULT_VIDEO_GEN_CONFIG },
-        videoGenOriginParentVideoId: null,
         isCanvasSelectionMode: false,
         canvasReferenceTarget: null,
         canvasSelectionIds: [],

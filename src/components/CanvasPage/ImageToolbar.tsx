@@ -26,7 +26,6 @@ export default function ImageToolbar({
   const openDetailCard = useProjectStore((s) => s.openDetailCard)
   const updateImageGenConfig = useProjectStore((s) => s.updateImageGenConfig)
   const setImageGenPanelOpen = useProjectStore((s) => s.setImageGenPanelOpen)
-  const setImageGenOriginParentImageId = useProjectStore((s) => s.setImageGenOriginParentImageId)
   const setSelectedTool = useProjectStore((s) => s.setSelectedTool)
   const cancelCanvasSelection = useProjectStore((s) => s.cancelCanvasSelection)
 
@@ -42,10 +41,9 @@ export default function ImageToolbar({
           : (m.model ?? DEFAULT_IMAGE_GEN_CONFIG.model),
       ratio: coerceImageGenRatio(m.ratio),
       resolution: coerceImageGenResolution(m.resolution),
-      referenceImageIds: [...(m.referenceImageIds ?? [])],
+      referenceImageIds: [...new Set([...(m.referenceImageIds ?? []), image.id])],
       count: 1,
     })
-    setImageGenOriginParentImageId(image.id)
     setImageGenPanelOpen(true)
     setSelectedTool('image-gen')
   }

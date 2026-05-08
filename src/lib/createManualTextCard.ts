@@ -29,6 +29,7 @@ export function createManualTextCardAtViewportCenter(viewportEl: HTMLElement | n
     width: W,
     height: H,
     text: '',
+    baseFontSizePx: 16,
     source: { kind: 'manual' },
     createdAt: Date.now(),
   }
