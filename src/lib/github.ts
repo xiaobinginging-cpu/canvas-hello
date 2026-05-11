@@ -271,6 +271,76 @@ export function githubRawToJsdelivr(url: string): string {
   }
 }
 
+/**
+ * jsDelivr CDN URL for any file path in a GitHub repo (`gh` endpoint).
+ * Same mapping as {@link githubRawToJsdelivr}; use for metadata JSON reads (see {@link readRepoJsonFileCdnFirst}).
+ */
+export function githubRepoPathToJsdelivrUrl(
+  owner: string,
+  repo: string,
+  branch: string,
+  pathInRepo: string,
+): string {
+  const p = pathInRepo.replace(/^\/+/, '')
+  const raw = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${p}`
+  return githubRawToJsdelivr(raw)
+}
+
+async function fetchRepoFileTextFromCdn(
+  owner: string,
+  repo: string,
+  branch: string,
+  pathInRepo: string,
+): Promise<string | null> {
+  const url = githubRepoPathToJsdelivrUrl(owner, repo, branch, pathInRepo)
+  try {
+    const res = await fetch(url, { credentials: 'omit', cache: 'default' })
+    if (!res.ok) return null
+    return await res.text()
+  } catch {
+    return null
+  }
+}
+
+async function readRepoTextFileViaContentsApi(
+  octokit: Octokit,
+  owner: string,
+  branch: string,
+  pathInRepo: string,
+): Promise<string> {
+  const { data } = await octokit.rest.repos.getContent({
+    owner,
+    repo: REPO_NAME,
+    path: pathInRepo,
+    ref: branch,
+  })
+  if (Array.isArray(data) || data.type !== 'file') {
+    throw new Error(`Not a file: ${pathInRepo}`)
+  }
+  return ghTextContentToString(data.content)
+}
+
+/**
+ * Read small repo JSON files (meta.json, canvas.json): jsDelivr first, GitHub Contents API on miss / private repo / invalid body.
+ */
+async function readRepoJsonFileCdnFirst(
+  octokit: Octokit,
+  owner: string,
+  branch: string,
+  pathInRepo: string,
+): Promise<string> {
+  const fromCdn = await fetchRepoFileTextFromCdn(owner, REPO_NAME, branch, pathInRepo)
+  if (fromCdn != null && fromCdn.length > 0) {
+    try {
+      JSON.parse(fromCdn)
+      return fromCdn
+    } catch {
+      console.warn(`[github/cdn] invalid JSON from CDN path=${pathInRepo}, falling back to Contents API`)
+    }
+  }
+  return readRepoTextFileViaContentsApi(octokit, owner, branch, pathInRepo)
+}
+
 /** Owner / repo / default branch — for building asset read URLs (via jsDelivr when applicable). */
 export function getRepoConfig(): { owner: string; repo: string; branch: string } {
   const owner = getGithubLogin()
@@ -523,14 +593,7 @@ export async function listProjects(): Promise<ProjectMeta[]> {
 
     const metaPath = `${PROJECT_PREFIX}${id}/meta.json`
     try {
-      const { data } = await octokit.rest.repos.getContent({
-        owner,
-        repo: REPO_NAME,
-        path: metaPath,
-        ref: branch,
-      })
-      if (Array.isArray(data) || data.type !== 'file') continue
-      const json = ghTextContentToString(data.content)
+      const json = await readRepoJsonFileCdnFirst(octokit, owner, branch, metaPath)
       const meta = JSON.parse(json) as ProjectMeta
       if (meta && typeof meta.id === 'string') metas.push(meta)
     } catch (e) {
@@ -552,24 +615,15 @@ export async function loadProject(id: string): Promise<LoadedProject> {
   const branch = await getRepoBranch(octokit, owner)
   const base = `${PROJECT_PREFIX}${id}`
 
-  const readTextFile = async (path: string): Promise<string> => {
-    try {
-      const { data } = await octokit.rest.repos.getContent({
-        owner,
-        repo: REPO_NAME,
-        path,
-        ref: branch,
-      })
-      if (Array.isArray(data) || data.type !== 'file') throw new Error(`Not a file: ${path}`)
-      return ghTextContentToString(data.content)
-    } catch (e) {
-      if (is401(e)) handle401()
-      throw e
-    }
+  let metaJson: string
+  let canvasJson: string
+  try {
+    metaJson = await readRepoJsonFileCdnFirst(octokit, owner, branch, `${base}/meta.json`)
+    canvasJson = await readRepoJsonFileCdnFirst(octokit, owner, branch, `${base}/canvas.json`)
+  } catch (e) {
+    if (is401(e)) handle401()
+    throw e
   }
-
-  const metaJson = await readTextFile(`${base}/meta.json`)
-  const canvasJson = await readTextFile(`${base}/canvas.json`)
 
   const meta = JSON.parse(metaJson) as ProjectMeta
   const canvas = JSON.parse(canvasJson) as CanvasData
@@ -587,16 +641,7 @@ export async function fetchProjectCanvas(projectId: string): Promise<CanvasData>
   const branch = await getRepoBranch(octokit, owner)
   const path = `${PROJECT_PREFIX}${projectId}/canvas.json`
   try {
-    const { data } = await octokit.rest.repos.getContent({
-      owner,
-      repo: REPO_NAME,
-      path,
-      ref: branch,
-    })
-    if (Array.isArray(data) || data.type !== 'file') {
-      throw new Error(`Not a file: ${path}`)
-    }
-    const json = ghTextContentToString(data.content)
+    const json = await readRepoJsonFileCdnFirst(octokit, owner, branch, path)
     return JSON.parse(json) as CanvasData
   } catch (e) {
     if (is401(e)) handle401()
