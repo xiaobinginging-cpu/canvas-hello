@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { Rnd } from 'react-rnd'
 import * as github from '../../lib/github.ts'
 import { schedulePersistCanvas } from '../../lib/canvasPersist.ts'
@@ -15,7 +15,7 @@ function truncatePrompt(s: string, max: number): string {
   return `${t.slice(0, max)}…`
 }
 
-export default function ImageItem({ image }: { image: CanvasImage }) {
+function ImageItem({ image }: { image: CanvasImage }) {
   const projectId = useProjectStore((s) => s.currentProjectId)
   const selectedImageId = useProjectStore((s) => s.selectedImageId)
   const objectUrl = useProjectStore((s) => s.imageObjectUrls.get(image.id))
@@ -149,7 +149,11 @@ export default function ImageItem({ image }: { image: CanvasImage }) {
         patchImagePositionLive(image.id, { x: d.x, y: d.y })
       }}
     >
-      <div data-image-item className="relative h-full w-full">
+      <div
+        data-image-item
+        className="relative h-full w-full"
+        style={{ transform: 'translateZ(0)', willChange: 'transform' }}
+      >
         {selected && !isCanvasSelectionMode ? (
           <>
             <div
@@ -341,3 +345,5 @@ export default function ImageItem({ image }: { image: CanvasImage }) {
     </Rnd>
   )
 }
+
+export default memo(ImageItem)

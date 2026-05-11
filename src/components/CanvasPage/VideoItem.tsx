@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { Rnd } from 'react-rnd'
 import * as github from '../../lib/github.ts'
 import { cancelVideoGeneration } from '../../lib/canvasGeneration.ts'
@@ -15,7 +15,7 @@ function truncatePrompt(s: string, max: number): string {
   return `${t.slice(0, max)}…`
 }
 
-export default function VideoItem({ video }: { video: CanvasVideo }) {
+function VideoItem({ video }: { video: CanvasVideo }) {
   const projectId = useProjectStore((s) => s.currentProjectId)
   const selectedVideoId = useProjectStore((s) => s.selectedVideoId)
   const objectUrl = useProjectStore((s) => s.videoObjectUrls.get(video.id))
@@ -155,7 +155,11 @@ export default function VideoItem({ video }: { video: CanvasVideo }) {
         })
       }}
     >
-      <div data-video-item className="relative h-full w-full">
+      <div
+        data-video-item
+        className="relative h-full w-full"
+        style={{ transform: 'translateZ(0)', willChange: 'transform' }}
+      >
         {selected && !isCanvasSelectionMode ? (
           <>
             <div
@@ -291,3 +295,5 @@ export default function VideoItem({ video }: { video: CanvasVideo }) {
     </Rnd>
   )
 }
+
+export default memo(VideoItem)

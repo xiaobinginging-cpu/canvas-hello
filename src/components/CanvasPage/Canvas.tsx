@@ -2,6 +2,7 @@ import {
   forwardRef,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type DragEvent,
@@ -9,7 +10,11 @@ import {
 } from 'react'
 import { CircleDot, Maximize2, Minus, Plus } from 'lucide-react'
 import { uploadFilesToCanvas } from '../../lib/canvasUpload.ts'
-import { useProjectStore } from '../../store/useStore.ts'
+import {
+  computeCanvasZoomAtPoint,
+  useProjectStore,
+  zoomNudgeStep,
+} from '../../store/useStore.ts'
 import type { Image as CanvasImage } from '../../types/image.ts'
 import type { TextCard, VideoItem as CanvasVideo } from '../../types/project.ts'
 import ImageItem from './ImageItem.tsx'
@@ -32,6 +37,10 @@ function modPos(n: number, m: number): number {
   return ((n % m) + m) % m
 }
 
+function hudPercentLabel(scale: number): string {
+  return `${Math.min(300, Math.max(1, Math.round(scale * 100)))}%`
+}
+
 const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
   const canvas = useProjectStore((s) => s.currentProjectCanvas)
   const images = canvas?.images ?? EMPTY_IMAGES
@@ -42,7 +51,6 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
   const canvasPanY = useProjectStore((s) => s.canvasPanY)
   const canvasScale = useProjectStore((s) => s.canvasScale)
   const setCanvasPan = useProjectStore((s) => s.setCanvasPan)
-  const nudgeCanvasZoom = useProjectStore((s) => s.nudgeCanvasZoom)
   const fitCanvasToImages = useProjectStore((s) => s.fitCanvasToImages)
   const isCanvasSelectionMode = useProjectStore((s) => s.isCanvasSelectionMode)
   const showCanvasDots = useProjectStore((s) => s.showCanvasDots)
@@ -58,6 +66,78 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
   } | null>(null)
 
   const viewportRef = useRef<HTMLDivElement | null>(null)
+  const planeRef = useRef<HTMLDivElement | null>(null)
+  const hudPercentRef = useRef<HTMLSpanElement | null>(null)
+
+  /** Live viewport for wheel zoom (DOM); store catches up after debounce */
+  const liveViewportRef = useRef({
+    panX: canvasPanX,
+    panY: canvasPanY,
+    scale: canvasScale,
+  })
+  const wheelGestureActiveRef = useRef(false)
+  const debounceTimerRef = useRef<number | null>(null)
+  const rafIdRef = useRef<number | null>(null)
+
+  const applyPlaneTransformDom = useCallback(() => {
+    const plane = planeRef.current
+    const hud = hudPercentRef.current
+    const { panX, panY, scale } = liveViewportRef.current
+    if (plane) {
+      plane.style.transform = `translate3d(${panX}px, ${panY}px, 0) scale(${scale})`
+    }
+    if (hud) {
+      hud.textContent = hudPercentLabel(scale)
+    }
+  }, [])
+
+  const flushPendingWheelZoomCommit = useCallback(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+      debounceTimerRef.current = null
+    }
+    if (wheelGestureActiveRef.current) {
+      const { panX, panY, scale } = liveViewportRef.current
+      useProjectStore.setState({ canvasPanX: panX, canvasPanY: panY, canvasScale: scale })
+      wheelGestureActiveRef.current = false
+    }
+  }, [])
+
+  const scheduleDebouncedViewportCommit = useCallback(() => {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+    debounceTimerRef.current = window.setTimeout(() => {
+      debounceTimerRef.current = null
+      const { panX, panY, scale } = liveViewportRef.current
+      useProjectStore.setState({ canvasPanX: panX, canvasPanY: panY, canvasScale: scale })
+      wheelGestureActiveRef.current = false
+    }, 200)
+  }, [])
+
+  const scheduleRafApply = useCallback(() => {
+    if (rafIdRef.current != null) return
+    rafIdRef.current = requestAnimationFrame(() => {
+      rafIdRef.current = null
+      applyPlaneTransformDom()
+    })
+  }, [applyPlaneTransformDom])
+
+  /** Pan / fit / reset: sync live viewport + DOM from store (skip during active wheel gesture) */
+  useLayoutEffect(() => {
+    if (wheelGestureActiveRef.current) return
+    liveViewportRef.current = {
+      panX: canvasPanX,
+      panY: canvasPanY,
+      scale: canvasScale,
+    }
+    applyPlaneTransformDom()
+  }, [canvasPanX, canvasPanY, canvasScale, applyPlaneTransformDom])
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+      if (rafIdRef.current != null) cancelAnimationFrame(rafIdRef.current)
+    }
+  }, [])
 
   const setRefs = useCallback(
     (node: HTMLDivElement | null) => {
@@ -91,17 +171,26 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
     const el = viewportRef.current
     if (!el) return
     const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey && !e.metaKey) return
       e.preventDefault()
+      wheelGestureActiveRef.current = true
       const r = el.getBoundingClientRect()
       const vx = e.clientX - r.left
       const vy = e.clientY - r.top
       const dir = e.deltaY > 0 ? -1 : 1
-      useProjectStore.getState().nudgeCanvasZoom(dir, vx, vy)
+      const cur = liveViewportRef.current
+      const step = zoomNudgeStep(cur.scale)
+      const next = computeCanvasZoomAtPoint(cur.panX, cur.panY, cur.scale, cur.scale + dir * step, vx, vy)
+      liveViewportRef.current = {
+        panX: next.canvasPanX,
+        panY: next.canvasPanY,
+        scale: next.canvasScale,
+      }
+      scheduleRafApply()
+      scheduleDebouncedViewportCommit()
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
-  }, [])
+  }, [scheduleRafApply, scheduleDebouncedViewportCommit])
 
   function isInteractiveCanvasChild(target: EventTarget | null): boolean {
     if (!(target instanceof Element)) return false
@@ -119,11 +208,14 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
     if (isCanvasSelectionMode) return
     if (isInteractiveCanvasChild(e.target)) return
 
+    flushPendingWheelZoomCommit()
+
+    const { canvasPanX: panX, canvasPanY: panY } = useProjectStore.getState()
     panStartRef.current = {
       clientX: e.clientX,
       clientY: e.clientY,
-      panX: canvasPanX,
-      panY: canvasPanY,
+      panX,
+      panY,
     }
     setIsPanning(true)
     clearSelection()
@@ -153,30 +245,41 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
     })
   }
 
-  const zoomPercent = Math.min(300, Math.max(1, Math.round(canvasScale * 100)))
-
-  function zoomIn() {
+  function applyZoomStep(dir: 1 | -1) {
+    flushPendingWheelZoomCommit()
     const el = viewportRef.current
     if (!el) return
     const r = el.getBoundingClientRect()
-    nudgeCanvasZoom(1, r.width / 2, r.height / 2)
+    const vx = r.width / 2
+    const vy = r.height / 2
+    const cur = liveViewportRef.current
+    const step = zoomNudgeStep(cur.scale)
+    const next = computeCanvasZoomAtPoint(cur.panX, cur.panY, cur.scale, cur.scale + dir * step, vx, vy)
+    liveViewportRef.current = {
+      panX: next.canvasPanX,
+      panY: next.canvasPanY,
+      scale: next.canvasScale,
+    }
+    wheelGestureActiveRef.current = true
+    scheduleRafApply()
+    scheduleDebouncedViewportCommit()
+  }
+
+  function zoomIn() {
+    applyZoomStep(1)
   }
 
   function zoomOut() {
-    const el = viewportRef.current
-    if (!el) return
-    const r = el.getBoundingClientRect()
-    nudgeCanvasZoom(-1, r.width / 2, r.height / 2)
+    applyZoomStep(-1)
   }
 
   function fitAll() {
+    flushPendingWheelZoomCommit()
     const el = viewportRef.current
     if (!el) return
     const r = el.getBoundingClientRect()
     fitCanvasToImages(r.width, r.height)
   }
-
-  const planeTransform = `translate(${canvasPanX}px, ${canvasPanY}px) scale(${canvasScale})`
 
   const dotBgX = modPos(canvasPanX, VIEWPORT_DOT_SPACING_PX)
   const dotBgY = modPos(canvasPanY, VIEWPORT_DOT_SPACING_PX)
@@ -198,6 +301,8 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
             ? 'grabbing'
             : 'grab',
         backgroundColor: '#FAF8F5',
+        transform: 'translateZ(0)',
+        willChange: 'transform',
         ...(showCanvasDots
           ? {
               backgroundImage:
@@ -226,9 +331,10 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
         >
           <Minus className="h-4 w-4" strokeWidth={2} />
         </button>
-        <span className="min-w-[2.75rem] px-1 text-center tabular-nums text-neutral-600">
-          {zoomPercent}%
-        </span>
+        <span
+          ref={hudPercentRef}
+          className="min-w-[2.75rem] px-1 text-center tabular-nums text-neutral-600"
+        />
         <button
           type="button"
           aria-label="Zoom in"
@@ -278,10 +384,11 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
       ) : null}
 
       <div
-        className="canvas-infinite-plane absolute left-0 top-0 origin-top-left will-change-transform"
+        ref={planeRef}
+        className="canvas-infinite-plane absolute left-0 top-0 origin-top-left"
         style={{
-          transform: planeTransform,
           transformOrigin: '0 0',
+          willChange: 'transform',
         }}
       >
         {images.map((img) => (

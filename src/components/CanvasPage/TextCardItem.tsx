@@ -7,7 +7,7 @@ import {
   Clipboard,
   Trash2,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Rnd } from 'react-rnd'
 import { deleteTextCardFromCanvas } from '../../lib/canvasUpload.ts'
 import { schedulePersistCanvas } from '../../lib/canvasPersist.ts'
@@ -141,7 +141,7 @@ function execAlign(which: 'left' | 'center' | 'right'): void {
   document.execCommand(cmd, false)
 }
 
-export default function TextCardItem({ card }: { card: TextCard }) {
+function TextCardItem({ card }: { card: TextCard }) {
   const projectId = useProjectStore((s) => s.currentProjectId)
   const selectedTextCardId = useProjectStore((s) => s.selectedTextCardId)
   const canvasScale = useProjectStore((s) => s.canvasScale)
@@ -402,6 +402,7 @@ export default function TextCardItem({ card }: { card: TextCard }) {
       <div
         data-text-card-item
         className="relative flex h-full w-full min-h-0 cursor-move flex-col"
+        style={{ transform: 'translateZ(0)', willChange: 'transform' }}
       >
         <div className="relative flex min-h-0 flex-1 flex-col">
           {selected && !isEditing ? (
@@ -641,3 +642,5 @@ export default function TextCardItem({ card }: { card: TextCard }) {
     </Rnd>
   )
 }
+
+export default memo(TextCardItem)

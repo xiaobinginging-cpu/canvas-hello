@@ -216,13 +216,35 @@ export interface ProjectStoreState {
 export const CANVAS_SCALE_MIN = 0.01
 export const CANVAS_SCALE_MAX = 3
 
-function clampCanvasScale(s: number): number {
+export function clampCanvasScale(s: number): number {
   return Math.min(CANVAS_SCALE_MAX, Math.max(CANVAS_SCALE_MIN, s))
 }
 
 /** Wheel / ± buttons: finer steps when zoomed out (<25%), coarser at normal+ zoom. */
-function zoomNudgeStep(currentScale: number): number {
+export function zoomNudgeStep(currentScale: number): number {
   return currentScale < 0.25 ? 0.02 : 0.05
+}
+
+/**
+ * Pure viewport zoom-at-point math (same as {@link ProjectStoreState.setCanvasZoomAtPoint}).
+ * Used by Canvas wheel rAF path to avoid zustand updates every zoom tick.
+ */
+export function computeCanvasZoomAtPoint(
+  panX: number,
+  panY: number,
+  scale: number,
+  nextScale: number,
+  viewportX: number,
+  viewportY: number,
+): { canvasPanX: number; canvasPanY: number; canvasScale: number } {
+  const s = clampCanvasScale(nextScale)
+  const wx = (viewportX - panX) / scale
+  const wy = (viewportY - panY) / scale
+  return {
+    canvasScale: s,
+    canvasPanX: viewportX - s * wx,
+    canvasPanY: viewportY - s * wy,
+  }
 }
 
 function sortProjectsList(list: ProjectMeta[]): ProjectMeta[] {
@@ -289,14 +311,15 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
 
   setCanvasZoomAtPoint: (nextScale, viewportX, viewportY) =>
     set((state) => {
-      const s = clampCanvasScale(nextScale)
-      const wx = (viewportX - state.canvasPanX) / state.canvasScale
-      const wy = (viewportY - state.canvasPanY) / state.canvasScale
-      return {
-        canvasScale: s,
-        canvasPanX: viewportX - s * wx,
-        canvasPanY: viewportY - s * wy,
-      }
+      const { canvasPanX, canvasPanY, canvasScale } = computeCanvasZoomAtPoint(
+        state.canvasPanX,
+        state.canvasPanY,
+        state.canvasScale,
+        nextScale,
+        viewportX,
+        viewportY,
+      )
+      return { canvasPanX, canvasPanY, canvasScale }
     }),
 
   nudgeCanvasZoom: (deltaScale, viewportX, viewportY) => {
