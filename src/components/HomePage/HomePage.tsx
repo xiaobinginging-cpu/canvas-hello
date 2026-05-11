@@ -13,6 +13,7 @@ import ProjectCard from './ProjectCard.tsx'
 import ProjectGrid from './ProjectGrid.tsx'
 import RenameProjectModal from './RenameProjectModal.tsx'
 import Logo from '../Logo.tsx'
+import LogoViewportLoading from '../logo/LogoViewportLoading.tsx'
 
 const newProjectId = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyz', 10)
 
@@ -267,10 +268,6 @@ export default function HomePage() {
       </header>
 
       <main className="mx-auto min-h-0 w-full max-w-[1400px] flex-1 overflow-y-auto px-8 pb-16 pt-10 text-left">
-        {loadPhase === 'loading' ? (
-          <p className="font-mono text-sm text-neutral-500">加载中…</p>
-        ) : null}
-
         {loadPhase === 'error' && loadError ? (
           <div className="mb-10 rounded border border-red-200 bg-red-50/80 px-4 py-3 font-mono text-sm text-red-900">
             <p className="mb-3">{loadError}</p>
@@ -394,6 +391,8 @@ export default function HomePage() {
           onConfirm={() => void handleDeleteConfirm()}
         />
       ) : null}
+
+      {loadPhase === 'loading' ? <LogoViewportLoading /> : null}
     </div>
   )
 }

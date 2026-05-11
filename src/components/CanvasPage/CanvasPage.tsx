@@ -11,6 +11,7 @@ import {
 import * as github from '../../lib/github.ts'
 import { useProjectStore } from '../../store/useStore.ts'
 import type { CanvasData, ProjectMeta } from '../../types/project'
+import LogoViewportLoading from '../logo/LogoViewportLoading.tsx'
 import NewProjectModal from '../HomePage/NewProjectModal.tsx'
 import Canvas from './Canvas.tsx'
 import DetailCard from './DetailCard.tsx'
@@ -203,11 +204,6 @@ export default function CanvasPage() {
           <Topbar />
           <div className="relative flex min-h-0 flex-1 flex-col">
             <Canvas ref={canvasViewportRef} />
-            {!canvasReady ? (
-              <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-[#FAF8F5]/85 font-mono text-sm text-neutral-500">
-                加载中…
-              </div>
-            ) : null}
           </div>
           <input
             ref={fileInputRef}
@@ -255,6 +251,8 @@ export default function CanvasPage() {
           {toast}
         </div>
       ) : null}
+
+      {!canvasReady ? <LogoViewportLoading /> : null}
 
       {pendingDelete ? (
         <div

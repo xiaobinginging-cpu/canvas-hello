@@ -28,6 +28,8 @@ body {
 }
 
 :root {
+  --cream-light: #f5efe6;
+  --cedar: #222;
   --text: #6b6375;
   --text-h: #08060d;
   --bg: #fff;

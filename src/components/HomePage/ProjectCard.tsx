@@ -43,11 +43,19 @@ export default function ProjectCard({
   const preview = meta.name.trim().slice(0, 48) || meta.id.slice(0, 12)
 
   const [thumbUrl, setThumbUrl] = useState<string | null>(null)
+  const [imgLoaded, setImgLoaded] = useState(false)
   const blobUrlRef = useRef<string | null>(null)
+  /** When CDN thumb fails (e.g. private repo), fall back to GitHub API → blob URL once */
+  const thumbBlobFallbackRef = useRef<{ filename: string } | null>(null)
+
+  useEffect(() => {
+    setImgLoaded(false)
+  }, [thumbUrl])
 
   useEffect(() => {
     let cancelled = false
     blobUrlRef.current = null
+    thumbBlobFallbackRef.current = null
     setThumbUrl(null)
 
     void (async () => {
@@ -61,8 +69,12 @@ export default function ProjectCard({
         }
 
         const raw = first.src.trim()
-        if (isRemoteOrDataSrc(raw)) {
+        if (raw.startsWith('data:')) {
           setThumbUrl(raw)
+          return
+        }
+        if (isRemoteOrDataSrc(raw)) {
+          setThumbUrl(github.githubRawToJsdelivr(raw))
           return
         }
 
@@ -72,11 +84,9 @@ export default function ProjectCard({
           return
         }
 
-        const blob = await github.fetchAsset(meta.id, filename)
-        if (cancelled) return
-        const url = URL.createObjectURL(blob)
-        blobUrlRef.current = url
-        setThumbUrl(url)
+        const assetPath = raw.startsWith('assets/') ? raw.replace(/^\/+/, '') : `assets/${filename}`
+        thumbBlobFallbackRef.current = { filename }
+        setThumbUrl(github.getRawAssetUrl(meta.id, assetPath))
       } catch {
         if (!cancelled) setThumbUrl(null)
       }
@@ -101,20 +111,52 @@ export default function ProjectCard({
         className="w-full rounded border border-neutral-300 bg-white text-left transition-colors hover:bg-neutral-50"
       >
         <div
-          className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-neutral-950 px-3"
+          className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-[var(--cream-light)] px-3"
           aria-hidden
         >
           {showImageThumb ? (
             <>
-              <img src={thumbUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
-              <div className="absolute inset-0 flex items-center justify-center bg-black/45 px-3">
-                <span className="line-clamp-3 break-all text-center font-mono text-sm font-medium leading-snug text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]">
+              <img
+                src={thumbUrl}
+                alt=""
+                onLoad={() => setImgLoaded(true)}
+                onError={() => {
+                  const fb = thumbBlobFallbackRef.current
+                  if (fb && !blobUrlRef.current) {
+                    const fn = fb.filename
+                    thumbBlobFallbackRef.current = null
+                    void (async () => {
+                      try {
+                        const blob = await github.fetchAsset(meta.id, fn)
+                        const url = URL.createObjectURL(blob)
+                        blobUrlRef.current = url
+                        setThumbUrl(url)
+                      } catch {
+                        setImgLoaded(true)
+                      }
+                    })()
+                    return
+                  }
+                  setImgLoaded(true)
+                }}
+                className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-200 ease-out ${
+                  imgLoaded ? 'opacity-100' : 'pointer-events-none opacity-0'
+                }`}
+              />
+              {imgLoaded ? (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/45 px-3">
+                  <span className="line-clamp-3 break-all text-center font-mono text-sm font-medium leading-snug text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]">
+                    {preview}
+                  </span>
+                </div>
+              ) : (
+                <span className="relative z-[1] line-clamp-3 break-all text-center font-mono text-sm leading-snug text-neutral-800">
                   {preview}
                 </span>
-              </div>
+              )}
             </>
           ) : (
-            <span className="line-clamp-3 break-all text-center font-mono text-sm leading-snug text-white">
+            <span className="line-clamp-3 break-all text-center font-mono text-sm leading-snug text-neutral-800">
               {preview}
             </span>
           )}

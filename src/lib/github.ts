@@ -249,7 +249,29 @@ function handle401(): never {
 
 let cachedRepoBranch: string | null = null
 
-/** Owner / repo / default branch — for building `raw.githubusercontent.com` URLs (needs login cache). */
+/**
+ * Convert a GitHub raw file URL to jsDelivr CDN (`cdn.jsdelivr.net/gh/...`) for faster reads + edge cache.
+ * Non-matching URLs (data:, other hosts, malformed) are returned unchanged.
+ * Note: jsDelivr `gh` serves **public** repos; private repos may 404 — callers can fall back (e.g. {@link fetchAsset}).
+ */
+export function githubRawToJsdelivr(url: string): string {
+  const trimmed = url.trim()
+  try {
+    const u = new URL(trimmed)
+    if (u.hostname !== 'raw.githubusercontent.com') return trimmed
+    const segments = u.pathname.split('/').filter(Boolean)
+    if (segments.length < 4) return trimmed
+    const owner = segments[0]
+    const repo = segments[1]
+    const branch = segments[2]
+    const pathInRepo = segments.slice(3).join('/')
+    return `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${branch}/${pathInRepo}`
+  } catch {
+    return trimmed
+  }
+}
+
+/** Owner / repo / default branch — for building asset read URLs (via jsDelivr when applicable). */
 export function getRepoConfig(): { owner: string; repo: string; branch: string } {
   const owner = getGithubLogin()
   if (!owner) {
@@ -263,14 +285,16 @@ export function getRepoConfig(): { owner: string; repo: string; branch: string }
 }
 
 /**
- * Public raw URL for a file under `project-{projectSlug}/`.
+ * Public read URL for a file under `project-{projectSlug}/` — served via jsDelivr CDN (same bytes as raw GitHub).
+ * Uploads still use GitHub API only; this is display / fetch-by-URL only.
  * @param projectSlug 项目 id（与路由一致，不含 `project-` 前缀）
  * @param assetPath 如 `assets/img-xxx.png`
  */
 export function getRawAssetUrl(projectSlug: string, assetPath: string): string {
   const { owner, repo, branch } = getRepoConfig()
   const normalized = assetPath.replace(/^\/+/, '')
-  return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/project-${projectSlug}/${normalized}`
+  const raw = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/project-${projectSlug}/${normalized}`
+  return githubRawToJsdelivr(raw)
 }
 
 async function getRepoBranch(octokit: Octokit, owner: string): Promise<string> {

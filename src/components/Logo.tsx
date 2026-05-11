@@ -1,47 +1,47 @@
-const PATH_D = 'M 84.64 30 A 40 40 0 1 0 84.64 70 L 65 50 Z'
+import { useId } from 'react'
+import { LOGO_PATH_SOLID } from './logo/logoPaths.ts'
 
 export default function Logo({
   size = 24,
-  color = '#222',
+  color = 'var(--cedar)',
   variant = 'outline',
 }: {
   size?: number
   color?: string
   variant?: 'outline' | 'solid'
 }) {
+  const clipId = useId().replace(/[^a-zA-Z0-9_-]/g, '')
+
   if (variant === 'outline') {
     return (
-      <svg
-        width={size}
-        height={size}
-        viewBox="0 0 100 100"
-        aria-hidden
-      >
+      <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden>
         <path
-          d={PATH_D}
+          d={LOGO_PATH_SOLID}
           fill="none"
           stroke={color}
           strokeWidth={6}
           strokeLinecap="round"
         />
+        <circle cx={28} cy={50} r={2} fill={color} />
         <circle cx={38} cy={50} r={2} fill={color} />
-        <circle cx={46} cy={50} r={2} fill={color} />
-        <circle cx={54} cy={50} r={2} fill={color} />
+        <circle cx={48} cy={50} r={2} fill={color} />
       </svg>
     )
   }
 
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 100 100"
-      aria-hidden
-    >
-      <path d={PATH_D} fill={color} />
-      <circle cx={38} cy={50} r={3} fill="#fff" />
-      <circle cx={46} cy={50} r={3} fill="#fff" />
-      <circle cx={54} cy={50} r={3} fill="#fff" />
+    <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden>
+      <defs>
+        <clipPath id={clipId}>
+          <path d={LOGO_PATH_SOLID} />
+        </clipPath>
+      </defs>
+      <path d={LOGO_PATH_SOLID} fill={color} />
+      <g clipPath={`url(#${clipId})`}>
+        <circle cx={28} cy={50} r={3} fill="#fff" />
+        <circle cx={38} cy={50} r={3} fill="#fff" />
+        <circle cx={48} cy={50} r={3} fill="#fff" />
+      </g>
     </svg>
   )
 }
