@@ -559,13 +559,67 @@ function isConflictStatus(e: unknown): boolean {
 
 // ─── projects API ────────────────────────────────────────────────────────────
 
-/** Lists `project-{id}/meta.json` across the repo; sorted by `updatedAt` descending. */
-export async function listProjects(): Promise<ProjectMeta[]> {
+const META_JSON_PATH_RE = /^project-([^/]+)\/meta\.json$/
+
+/**
+ * One Git Tree API call for the whole repo (`recursive=1`). Uses PAT on api.github.com.
+ * @throws If tree is truncated (unlikely) or ref/commit/tree fails.
+ */
+async function getRepoTreeRecursiveInternal(
+  octokit: Octokit,
+  owner: string,
+  branch: string,
+): Promise<Array<{ path?: string; type?: string; sha?: string; mode?: string; size?: number }>> {
+  const { data: refData } = await octokit.rest.git.getRef({
+    owner,
+    repo: REPO_NAME,
+    ref: `heads/${branch}`,
+  })
+  const commitSha = refData.object.sha
+  const { data: commitData } = await octokit.rest.git.getCommit({
+    owner,
+    repo: REPO_NAME,
+    commit_sha: commitSha,
+  })
+  const treeSha = commitData.tree.sha
+  const { data: treeData } = await octokit.rest.git.getTree({
+    owner,
+    repo: REPO_NAME,
+    tree_sha: treeSha,
+    recursive: 'true',
+  })
+  if (treeData.truncated) {
+    throw new Error('[github] git/tree recursive truncated')
+  }
+  return treeData.tree ?? []
+}
+
+/**
+ * Public helper: full recursive tree for `canvas-tool-projects` (same as {@link listProjects} listing source).
+ */
+export async function getRepoTreeRecursive(
+  owner: string,
+  repo: string,
+  branch: string,
+): Promise<Array<{ path?: string; type?: string; sha?: string; mode?: string; size?: number }>> {
   const octokit = await getAuthenticatedOctokit()
   await ensureRepo()
-  const owner = await getOwnerLogin(octokit)
-  const branch = await getRepoBranch(octokit, owner)
+  const login = await getOwnerLogin(octokit)
+  if (login !== owner) {
+    throw new Error('[github] getRepoTreeRecursive: owner must match authenticated user')
+  }
+  if (repo !== REPO_NAME) {
+    throw new Error('[github] getRepoTreeRecursive: repo must be canvas-tool-projects')
+  }
+  return getRepoTreeRecursiveInternal(octokit, owner, branch)
+}
 
+/** Fallback: root Contents listing + per-dir meta (N+1 API calls). */
+async function listProjectsViaContentsListing(
+  octokit: Octokit,
+  owner: string,
+  branch: string,
+): Promise<ProjectMeta[]> {
   let rootItems: Awaited<
     ReturnType<typeof octokit.rest.repos.getContent>
   >['data']
@@ -605,6 +659,43 @@ export async function listProjects(): Promise<ProjectMeta[]> {
 
   metas.sort((a, b) => b.updatedAt - a.updatedAt)
   return metas
+}
+
+/** Lists `project-{id}/meta.json` across the repo; sorted by `updatedAt` descending. */
+export async function listProjects(): Promise<ProjectMeta[]> {
+  const octokit = await getAuthenticatedOctokit()
+  await ensureRepo()
+  const owner = await getOwnerLogin(octokit)
+  const branch = await getRepoBranch(octokit, owner)
+
+  try {
+    const tree = await getRepoTreeRecursiveInternal(octokit, owner, branch)
+    const metaPaths = new Set<string>()
+    for (const entry of tree) {
+      if (entry.type !== 'blob' || !entry.path) continue
+      if (!META_JSON_PATH_RE.test(entry.path)) continue
+      metaPaths.add(entry.path)
+    }
+
+    const metas: ProjectMeta[] = []
+    for (const metaPath of metaPaths) {
+      try {
+        const json = await readRepoJsonFileCdnFirst(octokit, owner, branch, metaPath)
+        const meta = JSON.parse(json) as ProjectMeta
+        if (meta && typeof meta.id === 'string') metas.push(meta)
+      } catch (e) {
+        if (is401(e)) handle401()
+        if (is404(e)) continue
+        console.warn(`[github] skip meta ${metaPath}:`, e)
+      }
+    }
+
+    metas.sort((a, b) => b.updatedAt - a.updatedAt)
+    return metas
+  } catch (e) {
+    console.warn('[github] listProjects: Git Tree listing failed, falling back to Contents API', e)
+    return listProjectsViaContentsListing(octokit, owner, branch)
+  }
 }
 
 /** Loads `meta.json` + `canvas.json` only (assets are loaded via {@link fetchAsset}). */
