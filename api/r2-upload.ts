@@ -1,6 +1,6 @@
 import { PutObjectCommand } from '@aws-sdk/client-s3'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { getR2Bucket, getR2S3Client } from './_r2-s3'
+import { getR2Bucket, getR2S3Client } from './_r2-s3.js'
 
 /**
  * POST JSON `{ key, contentType?, base64 }` — base64 body avoids Vercel body-parser edge cases

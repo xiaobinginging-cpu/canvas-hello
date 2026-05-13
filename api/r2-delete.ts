@@ -1,6 +1,6 @@
 import { DeleteObjectsCommand, ListObjectsV2Command } from '@aws-sdk/client-s3'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { getR2Bucket, getR2S3Client } from './_r2-s3'
+import { getR2Bucket, getR2S3Client } from './_r2-s3.js'
 
 const BATCH = 1000
 
