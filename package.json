@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1045.0",
     "@google/generative-ai": "^0.24.1",
     "@octokit/rest": "^22.0.1",
     "@types/lodash.debounce": "^4.0.9",

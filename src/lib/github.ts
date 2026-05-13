@@ -1,8 +1,8 @@
 /**
- * GitHub REST sync via Personal Access Token (browser calls api.github.com directly; no OAuth code exchange).
+ * Project sync: primary storage on Cloudflare R2 (public reads + Vercel `/api/r2-*` writes),
+ * with GitHub REST + PAT as fallback when R2 is unavailable or misconfigured.
  *
- * Create a PAT: https://github.com/settings/tokens — enable scope **repo**
- * (Full control of private repositories).
+ * GitHub PAT: https://github.com/settings/tokens — scope **repo**
  */
 import { Octokit } from '@octokit/rest'
 import type { CanvasData, ProjectMeta } from '../types/project'
@@ -16,6 +16,146 @@ const GITHUB_LOGIN_KEY = 'github_login'
 const PENDING_SYNC_KEY = 'github_pending_sync'
 const REPO_NAME = 'canvas-tool-projects'
 const PROJECT_PREFIX = 'project-'
+
+// ─── Cloudflare R2 (writes via Vercel `/api/r2-*`; secrets stay server-side) ─
+
+function r2PublicReadConfigured(): boolean {
+  const u = import.meta.env.VITE_R2_PUBLIC_URL
+  return typeof u === 'string' && u.trim().length > 0
+}
+
+function r2PublicBase(): string {
+  return String(import.meta.env.VITE_R2_PUBLIC_URL ?? '')
+    .trim()
+    .replace(/\/+$/, '')
+}
+
+function r2ObjectKey(projectId: string, ...segments: string[]): string {
+  const rest = segments.map((s) => s.replace(/^\/+/, '').replace(/\/+$/, '')).filter(Boolean)
+  return [`${PROJECT_PREFIX}${projectId}`, ...rest].join('/')
+}
+
+function r2PublicUrlForKey(key: string): string {
+  const k = key.replace(/^\/+/, '')
+  const encoded = k
+    .split('/')
+    .map((seg) => encodeURIComponent(seg))
+    .join('/')
+  return `${r2PublicBase()}/${encoded}`
+}
+
+async function r2ListProjectPrefixes(): Promise<string[]> {
+  const qs = new URLSearchParams({ prefix: PROJECT_PREFIX, delimiter: '/' })
+  const res = await fetch(`/api/r2-list?${qs.toString()}`, { cache: 'no-store' })
+  if (!res.ok) {
+    const j = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(j.error || `[r2] list failed ${res.status}`)
+  }
+  const data = (await res.json()) as { commonPrefixes?: string[] }
+  return Array.isArray(data.commonPrefixes) ? data.commonPrefixes : []
+}
+
+function projectIdFromR2ListPrefix(p: string): string | null {
+  const clean = p.replace(/\/+$/, '')
+  return extractProjectFolderId(clean)
+}
+
+async function r2FetchTextFromPublic(key: string): Promise<string | null> {
+  const url = r2PublicUrlForKey(key)
+  try {
+    const res = await fetch(url, { credentials: 'omit', cache: 'no-store' })
+    if (!res.ok) return null
+    const t = await res.text()
+    return t.length > 0 ? t : null
+  } catch {
+    return null
+  }
+}
+
+async function r2UploadViaApi(key: string, blob: Blob): Promise<void> {
+  const base64 = await blobToBase64(blob)
+  const contentType = blob.type && blob.type.length > 0 ? blob.type : 'application/octet-stream'
+  const res = await fetch('/api/r2-upload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key, contentType, base64 }),
+  })
+  if (!res.ok) {
+    const j = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(j.error || `[r2] upload failed ${res.status}`)
+  }
+}
+
+async function r2DeletePrefix(prefix: string): Promise<void> {
+  const res = await fetch('/api/r2-delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prefix }),
+  })
+  if (!res.ok) {
+    const j = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(j.error || `[r2] delete failed ${res.status}`)
+  }
+}
+
+async function r2FetchBlobFromPublicThenApi(key: string, mime: string): Promise<Blob | null> {
+  try {
+    const url = r2PublicUrlForKey(key)
+    const res = await fetch(url, { credentials: 'omit', cache: 'no-store' })
+    if (res.ok) {
+      const b = await res.blob()
+      if (b.size > 0) return b
+    }
+  } catch {
+    /* fall through */
+  }
+  const qs = new URLSearchParams({ key })
+  const res2 = await fetch(`/api/r2-fetch?${qs.toString()}`, { cache: 'no-store' })
+  if (!res2.ok) return null
+  const buf = await res2.arrayBuffer()
+  return new Blob([buf], { type: mime })
+}
+
+async function listProjectsFromR2(): Promise<ProjectMeta[]> {
+  const prefixes = await r2ListProjectPrefixes()
+  const metas: ProjectMeta[] = []
+  for (const p of prefixes) {
+    const id = projectIdFromR2ListPrefix(p)
+    if (!id) continue
+    const json = await r2FetchTextFromPublic(r2ObjectKey(id, 'meta.json'))
+    if (json == null) continue
+    try {
+      const meta = JSON.parse(json) as ProjectMeta
+      if (meta && typeof meta.id === 'string') metas.push(meta)
+    } catch {
+      console.warn(`[r2] skip invalid meta.json prefix=${p}`)
+    }
+  }
+  metas.sort((a, b) => b.updatedAt - a.updatedAt)
+  return metas
+}
+
+async function loadProjectFromR2(id: string): Promise<LoadedProject> {
+  const metaKey = r2ObjectKey(id, 'meta.json')
+  const canvasKey = r2ObjectKey(id, 'canvas.json')
+  const [metaJson, canvasJson] = await Promise.all([
+    r2FetchTextFromPublic(metaKey),
+    r2FetchTextFromPublic(canvasKey),
+  ])
+  if (metaJson == null || canvasJson == null) {
+    throw new Error(`[r2] missing project files ${PROJECT_PREFIX}${id}`)
+  }
+  return {
+    meta: JSON.parse(metaJson) as ProjectMeta,
+    canvas: JSON.parse(canvasJson) as CanvasData,
+  }
+}
+
+async function fetchProjectCanvasFromR2(projectId: string): Promise<CanvasData> {
+  const json = await r2FetchTextFromPublic(r2ObjectKey(projectId, 'canvas.json'))
+  if (json == null) throw new Error(`[r2] missing canvas.json ${PROJECT_PREFIX}${projectId}`)
+  return JSON.parse(json) as CanvasData
+}
 
 // ─── errors ───────────────────────────────────────────────────────────────────
 
@@ -355,14 +495,17 @@ export function getRepoConfig(): { owner: string; repo: string; branch: string }
 }
 
 /**
- * Public read URL for a file under `project-{projectSlug}/` — served via jsDelivr CDN (same bytes as raw GitHub).
- * Uploads still use GitHub API only; this is display / fetch-by-URL only.
+ * Public read URL for a file under `project-{projectSlug}/`.
+ * When `VITE_R2_PUBLIC_URL` is set, uses R2 public URL; otherwise jsDelivr over GitHub raw.
  * @param projectSlug 项目 id（与路由一致，不含 `project-` 前缀）
  * @param assetPath 如 `assets/img-xxx.png`
  */
 export function getRawAssetUrl(projectSlug: string, assetPath: string): string {
-  const { owner, repo, branch } = getRepoConfig()
   const normalized = assetPath.replace(/^\/+/, '')
+  if (r2PublicReadConfigured()) {
+    return r2PublicUrlForKey(r2ObjectKey(projectSlug, ...normalized.split('/').filter(Boolean)))
+  }
+  const { owner, repo, branch } = getRepoConfig()
   const raw = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/project-${projectSlug}/${normalized}`
   return githubRawToJsdelivr(raw)
 }
@@ -375,7 +518,7 @@ async function getRepoBranch(octokit: Octokit, owner: string): Promise<string> {
 }
 
 /** Ensures the private `canvas-tool-projects` repo exists; seeds README + `.gitignore` when created. */
-export async function ensureRepo(): Promise<CanvasToolRepoInfo> {
+async function ensureRepoGithub(): Promise<CanvasToolRepoInfo> {
   const octokit = await getAuthenticatedOctokit()
   const owner = await getOwnerLogin(octokit)
 
@@ -426,6 +569,23 @@ export async function ensureRepo(): Promise<CanvasToolRepoInfo> {
       default_branch: data.default_branch,
     }
   }
+}
+
+/**
+ * When R2 is configured, skips GitHub repo bootstrap (lazy storage via R2 + `/api/r2-*`).
+ * Otherwise ensures the GitHub sync repo exists.
+ */
+export async function ensureRepo(): Promise<CanvasToolRepoInfo> {
+  if (r2PublicReadConfigured()) {
+    return {
+      id: 0,
+      name: 'r2',
+      full_name: 'r2/canvas-storage',
+      html_url: r2PublicBase(),
+      default_branch: 'main',
+    }
+  }
+  return ensureRepoGithub()
 }
 
 async function getShaIfExists(
@@ -603,7 +763,7 @@ export async function getRepoTreeRecursive(
   branch: string,
 ): Promise<Array<{ path?: string; type?: string; sha?: string; mode?: string; size?: number }>> {
   const octokit = await getAuthenticatedOctokit()
-  await ensureRepo()
+  await ensureRepoGithub()
   const login = await getOwnerLogin(octokit)
   if (login !== owner) {
     throw new Error('[github] getRepoTreeRecursive: owner must match authenticated user')
@@ -664,7 +824,14 @@ async function listProjectsViaContentsListing(
 /** Lists `project-{id}/meta.json` across the repo; sorted by `updatedAt` descending. */
 export async function listProjects(): Promise<ProjectMeta[]> {
   const octokit = await getAuthenticatedOctokit()
-  await ensureRepo()
+  if (r2PublicReadConfigured()) {
+    try {
+      return await listProjectsFromR2()
+    } catch (e) {
+      console.warn('[r2] listProjects failed, falling back to GitHub', e)
+    }
+  }
+  await ensureRepoGithub()
   const owner = await getOwnerLogin(octokit)
   const branch = await getRepoBranch(octokit, owner)
 
@@ -701,7 +868,14 @@ export async function listProjects(): Promise<ProjectMeta[]> {
 /** Loads `meta.json` + `canvas.json` only (assets are loaded via {@link fetchAsset}). */
 export async function loadProject(id: string): Promise<LoadedProject> {
   const octokit = await getAuthenticatedOctokit()
-  await ensureRepo()
+  if (r2PublicReadConfigured()) {
+    try {
+      return await loadProjectFromR2(id)
+    } catch (e) {
+      console.warn('[r2] loadProject failed, falling back to GitHub', e)
+    }
+  }
+  await ensureRepoGithub()
   const owner = await getOwnerLogin(octokit)
   const branch = await getRepoBranch(octokit, owner)
   const base = `${PROJECT_PREFIX}${id}`
@@ -727,7 +901,14 @@ export async function loadProject(id: string): Promise<LoadedProject> {
  */
 export async function fetchProjectCanvas(projectId: string): Promise<CanvasData> {
   const octokit = await getAuthenticatedOctokit()
-  await ensureRepo()
+  if (r2PublicReadConfigured()) {
+    try {
+      return await fetchProjectCanvasFromR2(projectId)
+    } catch (e) {
+      console.warn('[r2] fetchProjectCanvas failed, falling back to GitHub', e)
+    }
+  }
+  await ensureRepoGithub()
   const owner = await getOwnerLogin(octokit)
   const branch = await getRepoBranch(octokit, owner)
   const path = `${PROJECT_PREFIX}${projectId}/canvas.json`
@@ -831,7 +1012,7 @@ export async function saveProject(
       console.log('[save/exec] starting')
       try {
         try {
-          await flushSaveToGitHub(id, payload)
+          await flushSavePreferR2(id, payload)
         } catch (e) {
           await persistFailedSave(id, payload, e)
         }
@@ -846,9 +1027,40 @@ export async function saveProject(
   await saveQueueTail
 }
 
+async function flushSaveToR2(projectId: string, payload: PendingPayload): Promise<void> {
+  const base = `${PROJECT_PREFIX}${projectId}`
+  const metaStr = `${JSON.stringify(payload.meta, null, 2)}\n`
+  const canvasStr = `${JSON.stringify(payload.canvas, null, 2)}\n`
+  console.log(`[r2/save] starting for ${base}`)
+  for (const asset of payload.assets) {
+    const safeName = asset.name.replace(/^\/+/, '')
+    const key = `${base}/assets/${safeName}`
+    if (!asset.blob || asset.blob.size === 0) {
+      throw new Error(`[r2/save] refusing empty blob path=${key}`)
+    }
+    await r2UploadViaApi(key, asset.blob)
+  }
+  await r2UploadViaApi(`${base}/meta.json`, new Blob([metaStr], { type: 'application/json' }))
+  await r2UploadViaApi(`${base}/canvas.json`, new Blob([canvasStr], { type: 'application/json' }))
+  console.log(`[r2/save] done for ${base}`)
+}
+
+async function flushSavePreferR2(projectId: string, payload: PendingPayload): Promise<void> {
+  if (!r2PublicReadConfigured()) {
+    await flushSaveToGitHub(projectId, payload)
+    return
+  }
+  try {
+    await flushSaveToR2(projectId, payload)
+  } catch (e) {
+    console.warn('[r2/save] R2 path failed, falling back to GitHub', e)
+    await flushSaveToGitHub(projectId, payload)
+  }
+}
+
 async function flushSaveToGitHub(projectId: string, payload: PendingPayload): Promise<void> {
   const octokit = await getAuthenticatedOctokit()
-  await ensureRepo()
+  await ensureRepoGithub()
   const owner = await getOwnerLogin(octokit)
   const branch = await getRepoBranch(octokit, owner)
   const base = `${PROJECT_PREFIX}${projectId}`
@@ -1022,7 +1234,7 @@ export async function syncPendingFromStorage(): Promise<void> {
             blob: base64ToBlob(dataBase64),
           })),
         }
-        await flushSaveToGitHub(item.projectId, payload)
+        await flushSavePreferR2(item.projectId, payload)
       } else {
         await deleteProjectImmediate(item.projectId)
       }
@@ -1062,8 +1274,18 @@ export async function deleteProject(id: string): Promise<void> {
 }
 
 async function deleteProjectImmediate(id: string): Promise<void> {
+  if (r2PublicReadConfigured()) {
+    try {
+      await r2DeletePrefix(`${PROJECT_PREFIX}${id}/`)
+      console.log(`[r2/delete] done project-${id}`)
+      return
+    } catch (e) {
+      console.warn('[r2/delete] failed, falling back to GitHub', e)
+    }
+  }
+
   const octokit = await getAuthenticatedOctokit()
-  await ensureRepo()
+  await ensureRepoGithub()
   const owner = await getOwnerLogin(octokit)
   const branch = await getRepoBranch(octokit, owner)
   const root = `${PROJECT_PREFIX}${id}`
@@ -1163,27 +1385,28 @@ function shouldFetchAssetViaGitBlob(data: {
   )
 }
 
-/** Lazy-loads one asset under `project-{id}/assets/{filename}` as a `Blob`. */
-export async function fetchAsset(id: string, filename: string): Promise<Blob> {
+function mimeForAssetFilename(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase()
+  return ext === 'png'
+    ? 'image/png'
+    : ext === 'jpg' || ext === 'jpeg'
+      ? 'image/jpeg'
+      : ext === 'webp'
+        ? 'image/webp'
+        : ext === 'gif'
+          ? 'image/gif'
+          : ext === 'mp4'
+            ? 'video/mp4'
+            : 'application/octet-stream'
+}
+
+async function fetchAssetFromGitHub(id: string, filename: string): Promise<Blob> {
   const octokit = await getAuthenticatedOctokit()
-  await ensureRepo()
+  await ensureRepoGithub()
   const owner = await getOwnerLogin(octokit)
   const branch = await getRepoBranch(octokit, owner)
   const path = `${PROJECT_PREFIX}${id}/assets/${filename.replace(/^\/+/, '')}`
-
-  const ext = filename.split('.').pop()?.toLowerCase()
-  const mime =
-    ext === 'png'
-      ? 'image/png'
-      : ext === 'jpg' || ext === 'jpeg'
-        ? 'image/jpeg'
-        : ext === 'webp'
-          ? 'image/webp'
-          : ext === 'gif'
-            ? 'image/gif'
-            : ext === 'mp4'
-              ? 'video/mp4'
-              : 'application/octet-stream'
+  const mime = mimeForAssetFilename(filename)
 
   try {
     const { data } = await octokit.rest.repos.getContent({
@@ -1231,4 +1454,24 @@ export async function fetchAsset(id: string, filename: string): Promise<Blob> {
     if (is401(e)) handle401()
     throw e
   }
+}
+
+/** Lazy-loads one asset under `project-{id}/assets/{filename}` as a `Blob`. */
+export async function fetchAsset(id: string, filename: string): Promise<Blob> {
+  const mime = mimeForAssetFilename(filename)
+  const key = `${PROJECT_PREFIX}${id}/assets/${filename.replace(/^\/+/, '')}`
+
+  if (r2PublicReadConfigured()) {
+    try {
+      const blob = await r2FetchBlobFromPublicThenApi(key, mime)
+      if (blob && blob.size > 0) {
+        console.log('[fetch/r2] done', { size: blob.size, type: blob.type })
+        return blob
+      }
+    } catch (e) {
+      console.warn('[r2/fetchAsset] failed, falling back to GitHub', e)
+    }
+  }
+
+  return fetchAssetFromGitHub(id, filename)
 }
