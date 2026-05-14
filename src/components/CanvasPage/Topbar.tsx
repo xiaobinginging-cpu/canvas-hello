@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { Eraser, Settings } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import * as github from '../../lib/github.ts'
 import { useProjectStore } from '../../store/useStore.ts'
 import Logo from '../Logo.tsx'
@@ -141,14 +142,13 @@ export default function Topbar() {
         >
           <Eraser size={20} strokeWidth={2} color="currentColor" />
         </button>
-        <button
-          type="button"
-          title="设置"
-          disabled
-          className="inline-flex min-w-[2.5rem] cursor-not-allowed items-center justify-center rounded px-3 py-2 font-mono text-lg leading-none text-neutral-300 transition-colors disabled:hover:bg-transparent"
+        <Link
+          to="/settings"
+          title="API 密钥"
+          className="inline-flex min-w-[2.5rem] items-center justify-center rounded px-3 py-2 font-mono text-lg leading-none text-[#5f7163] transition-colors hover:bg-neutral-200/80"
         >
           <Settings size={20} strokeWidth={2} color="currentColor" />
-        </button>
+        </Link>
       </div>
     </header>
   )

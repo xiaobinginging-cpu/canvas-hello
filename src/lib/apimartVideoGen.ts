@@ -2,6 +2,7 @@
 
 import type { APImartVideoModel, VideoQuality } from '../types/video.ts'
 import { apimartBaseURL } from './apimartGen.ts'
+import { getApiKey, invalidApiKeyMessage, missingApiKeyMessage } from './apiKeys.ts'
 
 export type { APImartVideoModel, VideoQuality } from '../types/video.ts'
 
@@ -161,9 +162,9 @@ export async function generateVideoViaAPImart(opts: {
   /** http(s) only — e.g. GitHub raw URLs（不支持 data: base64） */
   imageRawUrls?: string[]
 }): Promise<Blob[]> {
-  const apiKey = import.meta.env.VITE_APIMART_API_KEY
-  if (!apiKey?.trim()) {
-    throw new Error('缺少 VITE_APIMART_API_KEY')
+  const apiKey = getApiKey('apimart')
+  if (!apiKey) {
+    throw new Error(missingApiKeyMessage('apimart'))
   }
 
   const base = apimartBaseURL()
@@ -184,11 +185,15 @@ export async function generateVideoViaAPImart(opts: {
   const submitResp = await fetch(`${base}/videos/generations`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${apiKey.trim()}`,
+      Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(submitBody),
   })
+
+  if (submitResp.status === 401 || submitResp.status === 403) {
+    throw new Error(invalidApiKeyMessage('apimart'))
+  }
 
   const submitText = await submitResp.text()
   let submitData: unknown
@@ -242,8 +247,12 @@ export async function generateVideoViaAPImart(opts: {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
 
     const statusResp = await fetch(`${base}/tasks/${taskId}`, {
-      headers: { Authorization: `Bearer ${apiKey.trim()}` },
+      headers: { Authorization: `Bearer ${apiKey}` },
     })
+
+    if (statusResp.status === 401 || statusResp.status === 403) {
+      throw new Error(invalidApiKeyMessage('apimart'))
+    }
     const statusText = await statusResp.text()
     let statusData: Record<string, unknown>
     try {

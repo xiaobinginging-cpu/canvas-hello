@@ -1,7 +1,8 @@
 import { Loader2, Zap } from 'lucide-react'
 import { useEffect, useState, type RefObject } from 'react'
+import { Link } from 'react-router-dom'
 import { APIMART_VIDEO_MODEL_OPTIONS } from '../../lib/apimartVideoGen.ts'
-import { hasApimartApiKey } from '../../lib/apimartGen.ts'
+import { hasApiKey, missingApiKeyMessage } from '../../lib/apiKeys.ts'
 import { runCanvasVideoGeneration } from '../../lib/canvasGeneration.ts'
 import { getGithubLogin, getRawAssetUrl } from '../../lib/github.ts'
 import { useProjectStore, type VideoGenRatio } from '../../store/useStore.ts'
@@ -116,7 +117,7 @@ export default function VideoGenPanel({
   if (!videoGenPanelOpen) return null
 
   const promptHasContent = videoGenConfig.prompt.trim() !== ''
-  const apiKeyOk = hasApimartApiKey()
+  const apiKeyOk = hasApiKey('apimart')
   const maxRef = maxRefsForModel(videoGenConfig.model)
   const durationOptions = durationsForModel(videoGenConfig.model)
 
@@ -137,9 +138,15 @@ export default function VideoGenPanel({
     >
       <div className="flex flex-col gap-3 p-4">
         {!apiKeyOk ? (
-          <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
-            需在 .env.local 设置 VITE_APIMART_API_KEY（视频仅 APIMart）
-          </p>
+          <>
+            <Link
+              to="/settings"
+              className="block rounded-lg border border-[#c9b8bb] bg-[#faf6f7] px-3 py-2 text-xs text-neutral-800 underline decoration-[#5f7163]/50 decoration-2 underline-offset-2 hover:decoration-[#5f7163]"
+            >
+              {missingApiKeyMessage('apimart')}
+            </Link>
+            <p className="text-[11px] text-neutral-500">视频生成仅支持 APIMart。</p>
+          </>
         ) : null}
 
         {videoRefError ? (

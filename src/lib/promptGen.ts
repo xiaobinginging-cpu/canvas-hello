@@ -1,5 +1,12 @@
 import OpenAI from 'openai'
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import {
+  getApiKey,
+  hasApiKey,
+  invalidApiKeyMessage,
+  isUnauthorizedError,
+  missingApiKeyMessage,
+} from './apiKeys.ts'
 
 function kimiBaseURL(): string {
   if (typeof window !== 'undefined' && window.location?.origin) {
@@ -11,13 +18,17 @@ function kimiBaseURL(): string {
   return 'https://api.moonshot.cn/v1'
 }
 
-const kimi = new OpenAI({
-  apiKey: import.meta.env.VITE_KIMI_API_KEY,
-  baseURL: kimiBaseURL(),
-  dangerouslyAllowBrowser: true,
-})
+function createKimiClient(): OpenAI {
+  return new OpenAI({
+    apiKey: getApiKey('kimi') ?? '',
+    baseURL: kimiBaseURL(),
+    dangerouslyAllowBrowser: true,
+  })
+}
 
-const google = new GoogleGenerativeAI(import.meta.env.VITE_GOOGLE_API_KEY ?? '')
+function createGooglePromptClient(): GoogleGenerativeAI {
+  return new GoogleGenerativeAI(getApiKey('google') ?? '')
+}
 
 export type PromptGenAPI = 'google' | 'kimi'
 
@@ -62,8 +73,7 @@ async function blobToBase64(b: Blob): Promise<string> {
 }
 
 export function hasKimiApiKey(): boolean {
-  const k = import.meta.env.VITE_KIMI_API_KEY
-  return typeof k === 'string' && k.trim() !== ''
+  return hasApiKey('kimi')
 }
 
 async function generatePromptTextOnly(opts: {
@@ -74,20 +84,32 @@ async function generatePromptTextOnly(opts: {
   const { api, model, instruction } = opts
 
   if (api === 'google') {
-    const genModel = google.getGenerativeModel({ model })
-    const result = await genModel.generateContent(instruction)
-    const text = result.response.text().trim()
-    if (!text) throw new Error('Google returned empty text')
-    return text
+    if (!getApiKey('google')) throw new Error(missingApiKeyMessage('google'))
+    try {
+      const genModel = createGooglePromptClient().getGenerativeModel({ model })
+      const result = await genModel.generateContent(instruction)
+      const text = result.response.text().trim()
+      if (!text) throw new Error('Google returned empty text')
+      return text
+    } catch (e) {
+      if (isUnauthorizedError(e)) throw new Error(invalidApiKeyMessage('google'))
+      throw e
+    }
   }
 
-  const completion = await kimi.chat.completions.create({
-    model,
-    messages: [{ role: 'user', content: instruction }],
-  })
-  const text = completion.choices[0]?.message?.content?.trim() ?? ''
-  if (!text) throw new Error('Kimi returned empty text')
-  return text
+  if (!getApiKey('kimi')) throw new Error(missingApiKeyMessage('kimi'))
+  try {
+    const completion = await createKimiClient().chat.completions.create({
+      model,
+      messages: [{ role: 'user', content: instruction }],
+    })
+    const text = completion.choices[0]?.message?.content?.trim() ?? ''
+    if (!text) throw new Error('Kimi returned empty text')
+    return text
+  } catch (e) {
+    if (isUnauthorizedError(e)) throw new Error(invalidApiKeyMessage('kimi'))
+    throw e
+  }
 }
 
 export async function generatePromptFromImages(opts: {
@@ -110,40 +132,52 @@ export async function generatePromptFromImages(opts: {
     instructionTrim || defaultInstructionForImageCount(imageBlobs.length)
 
   if (api === 'google') {
-    const genModel = google.getGenerativeModel({ model })
-    const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> =
-      []
+    if (!getApiKey('google')) throw new Error(missingApiKeyMessage('google'))
+    try {
+      const genModel = createGooglePromptClient().getGenerativeModel({ model })
+      const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> =
+        []
+      for (const blob of imageBlobs) {
+        const mime = blob.type || 'image/png'
+        const data = await blobToBase64(blob)
+        parts.push({ inlineData: { mimeType: mime, data } })
+      }
+      parts.push({ text: instruction })
+      const result = await genModel.generateContent(parts)
+      const text = result.response.text().trim()
+      if (!text) throw new Error('Google vision returned empty text')
+      return text
+    } catch (e) {
+      if (isUnauthorizedError(e)) throw new Error(invalidApiKeyMessage('google'))
+      throw e
+    }
+  }
+
+  if (!getApiKey('kimi')) throw new Error(missingApiKeyMessage('kimi'))
+  try {
+    const content: Array<
+      | { type: 'image_url'; image_url: { url: string } }
+      | { type: 'text'; text: string }
+    > = []
     for (const blob of imageBlobs) {
       const mime = blob.type || 'image/png'
       const data = await blobToBase64(blob)
-      parts.push({ inlineData: { mimeType: mime, data } })
+      content.push({
+        type: 'image_url',
+        image_url: { url: `data:${mime};base64,${data}` },
+      })
     }
-    parts.push({ text: instruction })
-    const result = await genModel.generateContent(parts)
-    const text = result.response.text().trim()
-    if (!text) throw new Error('Google vision returned empty text')
-    return text
-  }
+    content.push({ type: 'text', text: instruction })
 
-  const content: Array<
-    | { type: 'image_url'; image_url: { url: string } }
-    | { type: 'text'; text: string }
-  > = []
-  for (const blob of imageBlobs) {
-    const mime = blob.type || 'image/png'
-    const data = await blobToBase64(blob)
-    content.push({
-      type: 'image_url',
-      image_url: { url: `data:${mime};base64,${data}` },
+    const completion = await createKimiClient().chat.completions.create({
+      model,
+      messages: [{ role: 'user', content }],
     })
+    const text = completion.choices[0]?.message?.content?.trim() ?? ''
+    if (!text) throw new Error('Kimi returned empty text')
+    return text
+  } catch (e) {
+    if (isUnauthorizedError(e)) throw new Error(invalidApiKeyMessage('kimi'))
+    throw e
   }
-  content.push({ type: 'text', text: instruction })
-
-  const completion = await kimi.chat.completions.create({
-    model,
-    messages: [{ role: 'user', content }],
-  })
-  const text = completion.choices[0]?.message?.content?.trim() ?? ''
-  if (!text) throw new Error('Kimi returned empty text')
-  return text
 }

@@ -1,5 +1,10 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import type { GenerationConfig } from '../types/api.ts'
+import {
+  getApiKey,
+  invalidApiKeyMessage,
+  missingApiKeyMessage,
+} from './apiKeys.ts'
 
 /** Legacy helper — prefer REST {@link generateImage} / {@link generateOneImage} for image models. */
 export function createGenAiClient(apiKey: string): GoogleGenerativeAI {
@@ -16,13 +21,12 @@ type InlinePartApi = {
   inlineData?: { mimeType?: string; data?: string }
 }
 
-function getApiKey(): string | undefined {
-  const k = import.meta.env.VITE_GOOGLE_API_KEY
-  return typeof k === 'string' && k.trim() !== '' ? k.trim() : undefined
+function googleKey(): string | undefined {
+  return getApiKey('google') ?? undefined
 }
 
 export function hasGoogleApiKey(): boolean {
-  return Boolean(getApiKey())
+  return Boolean(googleKey())
 }
 
 function blobFromInlinePart(part: InlinePartApi): Blob | null {
@@ -97,8 +101,8 @@ async function geminiGenerateOnce(params: {
   signal?: AbortSignal
   referenceParts?: { mimeType: string; dataBase64: string }[]
 }): Promise<Blob[]> {
-  const key = getApiKey()
-  if (!key) throw new Error('缺少 VITE_GOOGLE_API_KEY')
+  const key = googleKey()
+  if (!key) throw new Error(missingApiKeyMessage('google'))
 
   const { model, prompt, aspectRatio, imageSize, signal, referenceParts } = params
 
@@ -152,6 +156,9 @@ async function geminiGenerateOnce(params: {
 
   const json: unknown = await res.json().catch(() => ({}))
   if (!res.ok) {
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(invalidApiKeyMessage('google'))
+    }
     const err = json as { error?: { message?: string; status?: string } }
     const msg = err.error?.message ?? res.statusText ?? 'Gemini request failed'
     if (/imageSize|resolution|size/i.test(msg)) {
@@ -214,7 +221,7 @@ export async function generateOneImage(
     referenceBlobs?: { blob: Blob; mimeType: string }[]
   },
 ): Promise<Blob> {
-  if (!getApiKey()) throw new Error('需在 .env.local 设置 VITE_GOOGLE_API_KEY')
+  if (!googleKey()) throw new Error(missingApiKeyMessage('google'))
 
   const aspectRatio = config.ratio ?? '1:1'
   const resolution = config.resolution ?? '2K'
@@ -246,7 +253,7 @@ export async function generateImage(
     referenceBlobs?: { blob: Blob; mimeType: string }[]
   },
 ): Promise<Blob[]> {
-  if (!getApiKey()) throw new Error('需在 .env.local 设置 VITE_GOOGLE_API_KEY')
+  if (!googleKey()) throw new Error(missingApiKeyMessage('google'))
 
   const referenceBlobs = options?.referenceBlobs
   const refEncoded = await toReferenceParts(referenceBlobs)

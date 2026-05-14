@@ -1,5 +1,11 @@
 /** APIMart async image generation（官方模型 id + 轮询）。 */
 
+import {
+  getApiKey,
+  invalidApiKeyMessage,
+  missingApiKeyMessage,
+} from './apiKeys.ts'
+
 export type APImartModel =
   | 'gemini-3.1-flash-image-preview-official'
   | 'gemini-3-pro-image-preview-official'
@@ -55,8 +61,7 @@ export function apimartBaseURL(): string {
 }
 
 export function hasApimartApiKey(): boolean {
-  const k = import.meta.env.VITE_APIMART_API_KEY
-  return typeof k === 'string' && k.trim() !== ''
+  return Boolean(getApiKey('apimart'))
 }
 
 function blobToBase64(blob: Blob): Promise<string> {
@@ -82,9 +87,9 @@ export async function generateViaAPImart(opts: {
   n: number
   imageBlobs?: Blob[]
 }): Promise<Blob[]> {
-  const apiKey = import.meta.env.VITE_APIMART_API_KEY
-  if (!apiKey?.trim()) {
-    throw new Error('缺少 VITE_APIMART_API_KEY')
+  const apiKey = getApiKey('apimart')
+  if (!apiKey) {
+    throw new Error(missingApiKeyMessage('apimart'))
   }
 
   const base = apimartBaseURL()
@@ -115,11 +120,15 @@ export async function generateViaAPImart(opts: {
   const submitResp = await fetch(`${base}/images/generations`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${apiKey.trim()}`,
+      Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(submitBody),
   })
+
+  if (submitResp.status === 401 || submitResp.status === 403) {
+    throw new Error(invalidApiKeyMessage('apimart'))
+  }
 
   const submitText = await submitResp.text()
   let submitData: unknown
@@ -175,8 +184,12 @@ export async function generateViaAPImart(opts: {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
 
     const statusResp = await fetch(`${base}/tasks/${taskId}`, {
-      headers: { Authorization: `Bearer ${apiKey.trim()}` },
+      headers: { Authorization: `Bearer ${apiKey}` },
     })
+
+    if (statusResp.status === 401 || statusResp.status === 403) {
+      throw new Error(invalidApiKeyMessage('apimart'))
+    }
     const statusText = await statusResp.text()
     let statusData: Record<string, unknown>
     try {

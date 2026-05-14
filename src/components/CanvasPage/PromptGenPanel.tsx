@@ -1,12 +1,12 @@
 import { Zap, X } from 'lucide-react'
 import { useMemo, type RefObject } from 'react'
-import { hasGoogleApiKey } from '../../lib/ai.ts'
+import { Link } from 'react-router-dom'
 import { runCanvasPromptGeneration } from '../../lib/canvasPromptGen.ts'
+import { hasApiKey, missingApiKeyMessage } from '../../lib/apiKeys.ts'
 import {
   GOOGLE_PROMPT_MODEL_OPTIONS,
   KIMI_PROMPT_MODELS,
   DEFAULT_PROMPT_GEN_INSTRUCTION_PLACEHOLDER,
-  hasKimiApiKey,
   type PromptGenAPI,
   type PromptGenModel,
 } from '../../lib/promptGen.ts'
@@ -38,7 +38,7 @@ export default function PromptGenPanel({
   }, [promptGenConfig.api])
 
   const apiKeyOk =
-    promptGenConfig.api === 'google' ? hasGoogleApiKey() : hasKimiApiKey()
+    promptGenConfig.api === 'google' ? hasApiKey('google') : hasApiKey('kimi')
 
   const hasReferenceImages = promptGenImageIds.length > 0
   const hasInstruction = promptGenConfig.instruction.trim() !== ''
@@ -78,11 +78,12 @@ export default function PromptGenPanel({
         </div>
 
         {!apiKeyOk ? (
-          <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
-            {promptGenConfig.api === 'google'
-              ? '需在 .env.local 设置 VITE_GOOGLE_API_KEY'
-              : '需在 .env.local 设置 VITE_KIMI_API_KEY'}
-          </p>
+          <Link
+            to="/settings"
+            className="block rounded-lg border border-[#c9b8bb] bg-[#faf6f7] px-3 py-2 text-xs text-neutral-800 underline decoration-[#5f7163]/50 decoration-2 underline-offset-2 hover:decoration-[#5f7163]"
+          >
+            {missingApiKeyMessage(promptGenConfig.api === 'google' ? 'google' : 'kimi')}
+          </Link>
         ) : null}
 
         <div className="flex flex-wrap items-start gap-3">

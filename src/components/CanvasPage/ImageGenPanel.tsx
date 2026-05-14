@@ -1,12 +1,12 @@
 import { Loader2, Zap } from 'lucide-react'
 import { useEffect, useState, type RefObject } from 'react'
+import { Link } from 'react-router-dom'
 import {
   APIMART_IMAGE_MODEL_OPTIONS,
   coerceApimartModelId,
   DEFAULT_APIMART_MODEL,
-  hasApimartApiKey,
 } from '../../lib/apimartGen.ts'
-import { hasGoogleApiKey } from '../../lib/ai.ts'
+import { hasApiKey, missingApiKeyMessage } from '../../lib/apiKeys.ts'
 import { runCanvasImageGeneration } from '../../lib/canvasGeneration.ts'
 import { useProjectStore } from '../../store/useStore.ts'
 import type { ImageGenRatio, ImageGenResolution } from '../../store/useStore.ts'
@@ -79,9 +79,7 @@ export default function ImageGenPanel({
 
   const promptHasContent = imageGenConfig.prompt.trim() !== ''
   const apiKeyOk =
-    imageGenConfig.api === 'google'
-      ? hasGoogleApiKey()
-      : hasApimartApiKey()
+    imageGenConfig.api === 'google' ? hasApiKey('google') : hasApiKey('apimart')
 
   function removeRef(id: string): void {
     updateImageGenConfig({
@@ -96,11 +94,12 @@ export default function ImageGenPanel({
     >
       <div className="flex flex-col gap-3 p-4">
         {!apiKeyOk ? (
-          <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
-            {imageGenConfig.api === 'apimart'
-              ? '需在 .env.local 设置 VITE_APIMART_API_KEY'
-              : '需在 .env.local 设置 VITE_GOOGLE_API_KEY'}
-          </p>
+          <Link
+            to="/settings"
+            className="block rounded-lg border border-[#c9b8bb] bg-[#faf6f7] px-3 py-2 text-xs text-neutral-800 underline decoration-[#5f7163]/50 decoration-2 underline-offset-2 hover:decoration-[#5f7163]"
+          >
+            {missingApiKeyMessage(imageGenConfig.api === 'apimart' ? 'apimart' : 'google')}
+          </Link>
         ) : null}
 
         <div className="flex flex-wrap items-start gap-3">
