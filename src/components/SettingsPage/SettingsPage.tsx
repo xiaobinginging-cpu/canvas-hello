@@ -12,6 +12,20 @@ import Logo from '../Logo.tsx'
 const SAGE_LINK =
   'text-[#5f7163] underline decoration-[#5f7163]/40 underline-offset-2 hover:text-[#4a5a4e]'
 
+const SAGE_BTN =
+  'rounded-lg border border-[#5f7163] bg-white px-3 py-2 text-xs font-medium text-[#5f7163] transition-colors hover:bg-[#5f7163]/10'
+
+const SAGE_BTN_SOLID =
+  'rounded-lg border border-[#5f7163] bg-[#5f7163] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-[#4d5c50]'
+
+const MASK = '•'.repeat(40)
+
+const EMPTY_STORED: Record<ApiKeyProvider, string> = {
+  google: '',
+  kimi: '',
+  apimart: '',
+}
+
 const KEY_FIELDS: {
   provider: ApiKeyProvider
   label: string
@@ -39,19 +53,22 @@ const KEY_FIELDS: {
 ]
 
 export default function SettingsPage() {
-  const [values, setValues] = useState<Record<ApiKeyProvider, string>>({
-    google: '',
-    kimi: '',
-    apimart: '',
+  const [stored, setStored] = useState<Record<ApiKeyProvider, string>>(EMPTY_STORED)
+  const [editing, setEditing] = useState<Record<ApiKeyProvider, boolean>>({
+    google: false,
+    kimi: false,
+    apimart: false,
   })
+  const [draft, setDraft] = useState<Record<ApiKeyProvider, string>>(EMPTY_STORED)
   const [visible, setVisible] = useState<Record<ApiKeyProvider, boolean>>({
     google: false,
     kimi: false,
     apimart: false,
   })
+  const [nameSuffix, setNameSuffix] = useState<Record<ApiKeyProvider, string>>(EMPTY_STORED)
 
   const reloadFromStorage = useCallback(() => {
-    setValues({
+    setStored({
       google: getApiKey('google') ?? '',
       kimi: getApiKey('kimi') ?? '',
       apimart: getApiKey('apimart') ?? '',
@@ -69,9 +86,26 @@ export default function SettingsPage() {
     }
   }, [reloadFromStorage])
 
-  const persist = (provider: ApiKeyProvider, raw: string) => {
-    setApiKey(provider, raw)
-    setValues((prev) => ({ ...prev, [provider]: raw }))
+  const startEdit = (provider: ApiKeyProvider) => {
+    const id =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    setNameSuffix((prev) => ({ ...prev, [provider]: id }))
+    setDraft((prev) => ({ ...prev, [provider]: '' }))
+    setVisible((prev) => ({ ...prev, [provider]: false }))
+    setEditing((prev) => ({ ...prev, [provider]: true }))
+  }
+
+  const saveEdit = (provider: ApiKeyProvider) => {
+    setApiKey(provider, draft[provider])
+    setEditing((prev) => ({ ...prev, [provider]: false }))
+    reloadFromStorage()
+  }
+
+  const cancelEdit = (provider: ApiKeyProvider) => {
+    setDraft((prev) => ({ ...prev, [provider]: '' }))
+    setEditing((prev) => ({ ...prev, [provider]: false }))
   }
 
   return (
@@ -91,46 +125,82 @@ export default function SettingsPage() {
         </p>
 
         <div className="flex flex-col gap-10">
-          {KEY_FIELDS.map(({ provider, label, helpUrl, helpLabel }) => (
-            <div key={provider} className="flex flex-col gap-2">
-              <label className="text-xs uppercase tracking-wide text-neutral-500">{label}</label>
-              <div className="relative">
-                <input
-                  type={visible[provider] ? 'text' : 'password'}
-                  autoComplete="off"
-                  spellCheck={false}
-                  value={values[provider]}
-                  onChange={(e) => {
-                    const v = e.target.value
-                    setValues((prev) => ({ ...prev, [provider]: v }))
-                    persist(provider, v)
-                  }}
-                  onBlur={(e) => persist(provider, e.target.value)}
-                  className="w-full rounded-lg border border-[#d4c8c9] bg-white py-2.5 pl-3 pr-11 text-sm text-neutral-900 outline-none ring-[#5f7163]/30 placeholder:text-neutral-400 focus:ring-2"
-                  placeholder="粘贴 API key"
-                />
-                <button
-                  type="button"
-                  title={visible[provider] ? '隐藏' : '显示'}
-                  aria-label={visible[provider] ? '隐藏密钥' : '显示密钥'}
-                  onClick={() =>
-                    setVisible((prev) => ({ ...prev, [provider]: !prev[provider] }))
-                  }
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800"
+          {KEY_FIELDS.map(({ provider, label, helpUrl, helpLabel }) => {
+            const isEdit = editing[provider]
+            const hasStored = Boolean(stored[provider])
+
+            return (
+              <div key={provider} className="flex flex-col gap-2">
+                <label className="text-xs uppercase tracking-wide text-neutral-500">{label}</label>
+
+                {!isEdit ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      readOnly
+                      disabled
+                      type="text"
+                      tabIndex={-1}
+                      value={hasStored ? MASK : ''}
+                      placeholder="未配置"
+                      className="min-w-0 flex-1 cursor-default rounded-lg border border-[#d4c8c9] bg-[#faf6f7] py-2.5 pl-3 pr-3 text-sm tracking-widest text-neutral-700 outline-none disabled:opacity-100"
+                      aria-label={`${label}（已配置，点击修改可更换）`}
+                    />
+                    <button type="button" onClick={() => startEdit(provider)} className={SAGE_BTN}>
+                      修改
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    <div className="relative flex w-full min-w-0">
+                      <input
+                        key={`edit-${provider}-${nameSuffix[provider]}`}
+                        type={visible[provider] ? 'text' : 'password'}
+                        name={`canvas-api-key-${provider}-${nameSuffix[provider]}`}
+                        autoComplete="new-password"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
+                        value={draft[provider]}
+                        onChange={(e) =>
+                          setDraft((prev) => ({ ...prev, [provider]: e.target.value }))
+                        }
+                        className="w-full rounded-lg border border-[#d4c8c9] bg-white py-2.5 pl-3 pr-11 text-sm text-neutral-900 outline-none ring-[#5f7163]/30 placeholder:text-neutral-400 focus:ring-2"
+                        placeholder="粘贴新的 API key"
+                      />
+                      <button
+                        type="button"
+                        title={visible[provider] ? '隐藏' : '显示'}
+                        aria-label={visible[provider] ? '隐藏密钥' : '显示密钥'}
+                        onClick={() =>
+                          setVisible((prev) => ({ ...prev, [provider]: !prev[provider] }))
+                        }
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800"
+                      >
+                        {visible[provider] ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={() => saveEdit(provider)} className={SAGE_BTN_SOLID}>
+                        保存
+                      </button>
+                      <button type="button" onClick={() => cancelEdit(provider)} className={SAGE_BTN}>
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <a
+                  href={helpUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={`text-xs ${SAGE_LINK}`}
                 >
-                  {visible[provider] ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
+                  {helpLabel}
+                </a>
               </div>
-              <a
-                href={helpUrl}
-                target="_blank"
-                rel="noreferrer"
-                className={`text-xs ${SAGE_LINK}`}
-              >
-                {helpLabel}
-              </a>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </main>
     </div>
