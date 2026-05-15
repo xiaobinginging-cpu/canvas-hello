@@ -7,6 +7,11 @@ import {
   setApiKey,
   type ApiKeyProvider,
 } from '../../lib/apiKeys.ts'
+import {
+  DISPLAY_NAME_CHANGED_EVENT,
+  getDisplayName,
+  setDisplayName,
+} from '../../lib/displayName.ts'
 import Logo from '../Logo.tsx'
 
 const SAGE_LINK =
@@ -52,6 +57,12 @@ const KEY_FIELDS: {
   },
 ]
 
+function newRandomId(): string {
+  return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
 export default function SettingsPage() {
   const [stored, setStored] = useState<Record<ApiKeyProvider, string>>(EMPTY_STORED)
   const [editing, setEditing] = useState<Record<ApiKeyProvider, boolean>>({
@@ -67,6 +78,11 @@ export default function SettingsPage() {
   })
   const [nameSuffix, setNameSuffix] = useState<Record<ApiKeyProvider, string>>(EMPTY_STORED)
 
+  const [dnStored, setDnStored] = useState('')
+  const [dnEditing, setDnEditing] = useState(false)
+  const [dnDraft, setDnDraft] = useState('')
+  const [dnSuffix, setDnSuffix] = useState('')
+
   const reloadFromStorage = useCallback(() => {
     setStored({
       google: getApiKey('google') ?? '',
@@ -75,23 +91,29 @@ export default function SettingsPage() {
     })
   }, [])
 
+  const reloadDisplayName = useCallback(() => {
+    setDnStored(getDisplayName() ?? '')
+  }, [])
+
   useEffect(() => {
     reloadFromStorage()
-    const onChange = () => reloadFromStorage()
-    window.addEventListener(API_KEYS_CHANGED_EVENT, onChange)
-    window.addEventListener('storage', onChange)
-    return () => {
-      window.removeEventListener(API_KEYS_CHANGED_EVENT, onChange)
-      window.removeEventListener('storage', onChange)
+    reloadDisplayName()
+    const syncAll = () => {
+      reloadFromStorage()
+      reloadDisplayName()
     }
-  }, [reloadFromStorage])
+    window.addEventListener(API_KEYS_CHANGED_EVENT, syncAll)
+    window.addEventListener(DISPLAY_NAME_CHANGED_EVENT, syncAll)
+    window.addEventListener('storage', syncAll)
+    return () => {
+      window.removeEventListener(API_KEYS_CHANGED_EVENT, syncAll)
+      window.removeEventListener(DISPLAY_NAME_CHANGED_EVENT, syncAll)
+      window.removeEventListener('storage', syncAll)
+    }
+  }, [reloadFromStorage, reloadDisplayName])
 
   const startEdit = (provider: ApiKeyProvider) => {
-    const id =
-      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-        ? crypto.randomUUID()
-        : `${Date.now()}-${Math.random().toString(36).slice(2)}`
-    setNameSuffix((prev) => ({ ...prev, [provider]: id }))
+    setNameSuffix((prev) => ({ ...prev, [provider]: newRandomId() }))
     setDraft((prev) => ({ ...prev, [provider]: '' }))
     setVisible((prev) => ({ ...prev, [provider]: false }))
     setEditing((prev) => ({ ...prev, [provider]: true }))
@@ -108,6 +130,25 @@ export default function SettingsPage() {
     setEditing((prev) => ({ ...prev, [provider]: false }))
   }
 
+  const startDnEdit = () => {
+    setDnSuffix(newRandomId())
+    setDnDraft('')
+    setDnEditing(true)
+  }
+
+  const saveDnEdit = () => {
+    setDisplayName(dnDraft)
+    setDnEditing(false)
+    reloadDisplayName()
+  }
+
+  const cancelDnEdit = () => {
+    setDnDraft('')
+    setDnEditing(false)
+  }
+
+  const hasDn = Boolean(dnStored)
+
   return (
     <div className="min-h-svh bg-[#FAF8F5] font-mono text-neutral-900">
       <header className="flex shrink-0 items-center justify-between border-b border-[#d4c8c9]/80 bg-[#FAF8F5] px-8 py-5">
@@ -119,6 +160,55 @@ export default function SettingsPage() {
       </header>
 
       <main className="mx-auto max-w-lg px-6 py-12 text-left">
+        <section className="mb-12 flex flex-col gap-2">
+          <label className="text-xs uppercase tracking-wide text-neutral-500">显示名称</label>
+          <p className="text-xs leading-relaxed text-neutral-500">
+            顶部显示的名字。留空则显示 GitHub 用户名。
+          </p>
+
+          {!dnEditing ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                readOnly
+                disabled
+                type="text"
+                tabIndex={-1}
+                value={hasDn ? dnStored : ''}
+                placeholder="未配置"
+                className="min-w-0 flex-1 cursor-default rounded-lg border border-[#d4c8c9] bg-[#faf6f7] py-2.5 pl-3 pr-3 text-sm text-neutral-800 outline-none disabled:opacity-100"
+                aria-label="显示名称（已保存）"
+              />
+              <button type="button" onClick={startDnEdit} className={SAGE_BTN}>
+                修改
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <input
+                key={`dn-edit-${dnSuffix}`}
+                type="text"
+                name={`canvas-display-name-${dnSuffix}`}
+                autoComplete="new-password"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                value={dnDraft}
+                onChange={(e) => setDnDraft(e.target.value)}
+                className="w-full rounded-lg border border-[#d4c8c9] bg-white py-2.5 pl-3 pr-3 text-sm text-neutral-900 outline-none ring-[#5f7163]/30 placeholder:text-neutral-400 focus:ring-2"
+                placeholder="想显示什么名字（比如：若斌、小斌、设计师）"
+              />
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={saveDnEdit} className={SAGE_BTN_SOLID}>
+                  保存
+                </button>
+                <button type="button" onClick={cancelDnEdit} className={SAGE_BTN}>
+                  取消
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+
         <p className="mb-10 text-sm leading-relaxed text-neutral-600">
           密钥仅保存在本机浏览器的 <code className="rounded bg-[#ebe4e5]/60 px-1 py-0.5 text-xs">localStorage</code>
           ，不会上传到 canvas-hello 服务器。GitHub PAT 仍在首页单独配置。

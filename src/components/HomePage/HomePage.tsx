@@ -12,6 +12,7 @@ import PATSetup from './PATSetup.tsx'
 import ProjectCard from './ProjectCard.tsx'
 import ProjectGrid from './ProjectGrid.tsx'
 import RenameProjectModal from './RenameProjectModal.tsx'
+import { useEffectiveUserLabel } from '../../hooks/useEffectiveUserLabel.ts'
 import Logo from '../Logo.tsx'
 import LogoViewportLoading from '../logo/LogoViewportLoading.tsx'
 
@@ -29,7 +30,7 @@ export default function HomePage() {
   const navigate = useNavigate()
   const projects = useProjectStore((s) => s.projects)
   const isAuthenticated = useProjectStore((s) => s.isAuthenticated)
-  const githubLogin = useProjectStore((s) => s.githubLogin)
+  const headerUserLabel = useEffectiveUserLabel()
   const syncAuthFromGithub = useProjectStore((s) => s.syncAuthFromGithub)
   const setProjects = useProjectStore((s) => s.setProjects)
   const addProject = useProjectStore((s) => s.addProject)
@@ -248,7 +249,7 @@ export default function HomePage() {
           <Logo variant="solid" size={32} />
         </span>
         <div className="flex items-center gap-6 text-sm">
-          <span className="text-neutral-600">{githubLogin ?? '—'}</span>
+          <span className="text-neutral-600">{headerUserLabel}</span>
           <button
             type="button"
             onClick={handleLogout}

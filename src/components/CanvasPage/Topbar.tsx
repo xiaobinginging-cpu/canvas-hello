@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { Eraser, Settings } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { useEffectiveUserLabel } from '../../hooks/useEffectiveUserLabel.ts'
 import * as github from '../../lib/github.ts'
 import { useProjectStore } from '../../store/useStore.ts'
 import Logo from '../Logo.tsx'
 
 export default function Topbar() {
+  const headerUserLabel = useEffectiveUserLabel()
   const projectId = useProjectStore((s) => s.currentProjectId)
   const meta = useProjectStore((s) => s.currentProjectMeta)
   const canvas = useProjectStore((s) => s.currentProjectCanvas)
@@ -132,23 +134,31 @@ export default function Topbar() {
           </button>
         )}
       </div>
-      <div className="flex shrink-0 items-center gap-0.5">
-        <button
-          type="button"
-          title="清理孤儿"
-          disabled={!projectId || !meta || !canvas || cleanupBusy}
-          onClick={() => void runCleanupOrphans()}
-          className="inline-flex min-w-[2.5rem] items-center justify-center rounded px-3 py-2 font-mono text-lg leading-none text-[#222] transition-colors hover:bg-neutral-200/80 disabled:cursor-not-allowed disabled:text-neutral-300 disabled:hover:bg-transparent"
+      <div className="flex shrink-0 items-center gap-3">
+        <span
+          className="hidden max-w-[10rem] truncate text-sm text-neutral-600 sm:inline"
+          title={headerUserLabel}
         >
-          <Eraser size={20} strokeWidth={2} color="currentColor" />
-        </button>
-        <Link
-          to="/settings"
-          title="API 密钥"
-          className="inline-flex min-w-[2.5rem] items-center justify-center rounded px-3 py-2 font-mono text-lg leading-none text-[#5f7163] transition-colors hover:bg-neutral-200/80"
-        >
-          <Settings size={20} strokeWidth={2} color="currentColor" />
-        </Link>
+          {headerUserLabel}
+        </span>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <button
+            type="button"
+            title="清理孤儿"
+            disabled={!projectId || !meta || !canvas || cleanupBusy}
+            onClick={() => void runCleanupOrphans()}
+            className="inline-flex min-w-[2.5rem] items-center justify-center rounded px-3 py-2 font-mono text-lg leading-none text-[#222] transition-colors hover:bg-neutral-200/80 disabled:cursor-not-allowed disabled:text-neutral-300 disabled:hover:bg-transparent"
+          >
+            <Eraser size={20} strokeWidth={2} color="currentColor" />
+          </button>
+          <Link
+            to="/settings"
+            title="API 密钥"
+            className="inline-flex min-w-[2.5rem] items-center justify-center rounded px-3 py-2 font-mono text-lg leading-none text-[#5f7163] transition-colors hover:bg-neutral-200/80"
+          >
+            <Settings size={20} strokeWidth={2} color="currentColor" />
+          </Link>
+        </div>
       </div>
     </header>
   )
