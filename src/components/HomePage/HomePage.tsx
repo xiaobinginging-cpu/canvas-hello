@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Settings } from 'lucide-react'
+import { Images, Settings } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { customAlphabet } from 'nanoid'
 import * as github from '../../lib/github.ts'
@@ -249,6 +249,14 @@ export default function HomePage() {
           <Logo variant="solid" size={32} />
         </span>
         <div className="flex items-center gap-6 text-sm">
+          <Link
+            to="/library"
+            className="inline-flex items-center gap-1.5 text-neutral-900 hover:text-neutral-600"
+            title="素材库"
+          >
+            <Images size={18} strokeWidth={2} aria-hidden />
+            素材库
+          </Link>
           <span className="text-neutral-600">{headerUserLabel}</span>
           <button
             type="button"

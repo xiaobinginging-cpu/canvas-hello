@@ -83,6 +83,12 @@ export interface ImageMetadata {
    * **upload** 建议带；generated 通常省略。
    */
   originalFilename?: string
+
+  /**
+   * 若该图由「素材库 → 用到画布」拉入，记来源素材 id（`lib-…`）作 lineage 溯源。
+   * 见 `types/library.ts` {@link import('./library').LibraryMaterial}。
+   */
+  libraryMaterialId?: string
 }
 
 /**

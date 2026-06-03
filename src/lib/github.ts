@@ -6,6 +6,7 @@
  */
 import { Octokit } from '@octokit/rest'
 import type { CanvasData, ProjectMeta } from '../types/project'
+import { EMPTY_LIBRARY, normalizeLibraryData, type LibraryData } from '../types/library'
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
@@ -16,6 +17,8 @@ const GITHUB_LOGIN_KEY = 'github_login'
 const PENDING_SYNC_KEY = 'github_pending_sync'
 const REPO_NAME = 'canvas-tool-projects'
 const PROJECT_PREFIX = 'project-'
+/** 跨 project 全局素材库根目录（下划线前缀避免与 `project-{slug}` 撞）。见 `canvas-spec.md` §1「素材库」。 */
+const LIBRARY_PREFIX = '_library'
 
 // ─── Cloudflare R2 (writes via Vercel `/api/r2-*`; secrets stay server-side) ─
 
@@ -1474,4 +1477,221 @@ export async function fetchAsset(id: string, filename: string): Promise<Blob> {
   }
 
   return fetchAssetFromGitHub(id, filename)
+}
+
+// ─── 素材库 Asset Library (`_library/`) ──────────────────────────────────────
+//
+// 跨 project 全局存储层，复用上方 R2 + GitHub 基建（不另开 repo / OAuth）。
+// 路径：`_library/library.json`（索引）+ `_library/assets/lib-{nanoid}.{ext}`（图片二进制）。
+
+/** Build an object key / repo path under `_library/` (no `project-` prefix). */
+function libraryKey(...segments: string[]): string {
+  const rest = segments.map((s) => s.replace(/^\/+/, '').replace(/\/+$/, '')).filter(Boolean)
+  return [LIBRARY_PREFIX, ...rest].join('/')
+}
+
+/**
+ * Read a text object from R2, distinguishing **genuinely missing (404)** from **transient error**.
+ * Public URL first, then authoritative `/api/r2-fetch`. Throws on real errors so callers never
+ * mistake a network blip for an empty library (which would overwrite real data on next save).
+ */
+async function r2FetchTextStrict(key: string): Promise<{ found: boolean; text: string | null }> {
+  try {
+    const res = await fetch(r2PublicUrlForKey(key), { credentials: 'omit', cache: 'no-store' })
+    if (res.ok) return { found: true, text: await res.text() }
+    if (res.status === 404) return { found: false, text: null }
+  } catch {
+    /* fall through to authoritative API */
+  }
+  const qs = new URLSearchParams({ key })
+  const res2 = await fetch(`/api/r2-fetch?${qs.toString()}`, { cache: 'no-store' })
+  if (res2.status === 404) return { found: false, text: null }
+  if (!res2.ok) throw new Error(`[r2] library read failed ${res2.status}`)
+  return { found: true, text: await res2.text() }
+}
+
+/** Loads `_library/library.json`. Missing file → empty library; transient errors throw. */
+export async function loadLibrary(): Promise<LibraryData> {
+  if (r2PublicReadConfigured()) {
+    const { found, text } = await r2FetchTextStrict(libraryKey('library.json'))
+    if (!found || !text) return { ...EMPTY_LIBRARY }
+    try {
+      return normalizeLibraryData(JSON.parse(text))
+    } catch {
+      throw new Error('[r2] library.json invalid JSON')
+    }
+  }
+
+  const octokit = await getAuthenticatedOctokit()
+  await ensureRepoGithub()
+  const owner = await getOwnerLogin(octokit)
+  const branch = await getRepoBranch(octokit, owner)
+  try {
+    // 用 Contents API（no-store、权威）而**不是** jsDelivr CDN——library.json 是可变索引、
+    // 写后立刻读，走 CDN 会拿到 @branch 的过期缓存：导致「存入成功但不显示」、
+    // 且 saveImageToLibrary 读到旧快照后追加会覆盖中间新增的素材（数据丢失）。
+    const json = await readRepoTextFileViaContentsApi(octokit, owner, branch, `${LIBRARY_PREFIX}/library.json`)
+    return normalizeLibraryData(JSON.parse(json))
+  } catch (e) {
+    if (is401(e)) handle401()
+    if (is404(e)) return { ...EMPTY_LIBRARY }
+    throw e
+  }
+}
+
+async function flushLibraryToR2(
+  data: LibraryData,
+  newAssets: { name: string; blob: Blob }[],
+): Promise<void> {
+  for (const asset of newAssets) {
+    const safeName = asset.name.replace(/^\/+/, '')
+    const key = libraryKey('assets', safeName)
+    if (!asset.blob || asset.blob.size === 0) {
+      throw new Error(`[r2/library] refusing empty blob path=${key}`)
+    }
+    await r2UploadViaApi(key, asset.blob)
+  }
+  const json = `${JSON.stringify(data, null, 2)}\n`
+  await r2UploadViaApi(libraryKey('library.json'), new Blob([json], { type: 'application/json' }))
+}
+
+async function flushLibraryToGitHub(
+  data: LibraryData,
+  newAssets: { name: string; blob: Blob }[],
+): Promise<void> {
+  const octokit = await getAuthenticatedOctokit()
+  await ensureRepoGithub()
+  const owner = await getOwnerLogin(octokit)
+  const branch = await getRepoBranch(octokit, owner)
+  const iso = new Date().toISOString()
+  const msg = `update _library - ${iso}`
+
+  for (const asset of newAssets) {
+    const safeName = asset.name.replace(/^\/+/, '')
+    const filePath = `${LIBRARY_PREFIX}/assets/${safeName}`
+    if (!asset.blob || asset.blob.size === 0) {
+      throw new Error(`[github/library] refusing empty blob path=${filePath}`)
+    }
+    const b64 = await blobToBase64(asset.blob)
+    const sha = await getShaIfExists(octokit, owner, filePath, branch)
+    const putResp = await putBinaryFile(octokit, owner, branch, filePath, b64, msg, sha)
+    await verifyUploadedBinarySize(octokit, owner, branch, filePath, putResp.data, asset.blob.size)
+  }
+
+  const json = `${JSON.stringify(data, null, 2)}\n`
+  const indexPath = `${LIBRARY_PREFIX}/library.json`
+  const sha = await getShaIfExists(octokit, owner, indexPath, branch)
+  await putTextFile(octokit, owner, branch, indexPath, json, msg, sha)
+}
+
+/**
+ * Writes `_library/library.json` and optional new asset blobs. Prefers R2 when configured,
+ * falls back to GitHub (same policy as {@link saveProject}). Throws on hard failure so callers can surface retry.
+ */
+export async function saveLibrary(
+  data: LibraryData,
+  newAssets: { name: string; blob: Blob }[] = [],
+): Promise<void> {
+  if (r2PublicReadConfigured()) {
+    try {
+      await flushLibraryToR2(data, newAssets)
+      return
+    } catch (e) {
+      console.warn('[r2/library] save failed, falling back to GitHub', e)
+    }
+  }
+  await flushLibraryToGitHub(data, newAssets)
+}
+
+async function fetchLibraryAssetFromGitHub(filename: string, mime: string): Promise<Blob> {
+  const octokit = await getAuthenticatedOctokit()
+  await ensureRepoGithub()
+  const owner = await getOwnerLogin(octokit)
+  const branch = await getRepoBranch(octokit, owner)
+  const path = `${LIBRARY_PREFIX}/assets/${filename.replace(/^\/+/, '')}`
+
+  try {
+    const { data } = await octokit.rest.repos.getContent({ owner, repo: REPO_NAME, path, ref: branch })
+    if (Array.isArray(data) || data.type !== 'file') throw new Error(`Not a file: ${path}`)
+
+    const large = shouldFetchAssetViaGitBlob({
+      content: typeof data.content === 'string' ? data.content : undefined,
+      encoding: data.encoding,
+      size: data.size,
+    })
+    if (large) {
+      if (!data.sha) throw new Error(`[fetchLibraryAsset] missing sha for git blob path=${path}`)
+      const { data: blobData } = await octokit.rest.git.getBlob({
+        owner,
+        repo: REPO_NAME,
+        file_sha: data.sha,
+      })
+      if (blobData.encoding !== 'base64' || blobData.content == null) {
+        throw new Error(`[fetchLibraryAsset] unexpected git/blobs payload path=${path}`)
+      }
+      return base64ToBlob(blobData.content.replace(/\s/g, ''), mime)
+    }
+    const clean = (typeof data.content === 'string' ? data.content : '').replace(/\s/g, '')
+    return base64ToBlob(clean, mime)
+  } catch (e) {
+    if (is401(e)) handle401()
+    throw e
+  }
+}
+
+/** Lazy-loads one library asset under `_library/assets/{filename}` as a `Blob`. */
+export async function fetchLibraryAsset(filename: string): Promise<Blob> {
+  const mime = mimeForAssetFilename(filename)
+  const key = libraryKey('assets', filename)
+  if (r2PublicReadConfigured()) {
+    try {
+      const blob = await r2FetchBlobFromPublicThenApi(key, mime)
+      if (blob && blob.size > 0) return blob
+    } catch (e) {
+      console.warn('[r2/fetchLibraryAsset] failed, falling back to GitHub', e)
+    }
+  }
+  return fetchLibraryAssetFromGitHub(filename, mime)
+}
+
+/** Best-effort delete of one library asset object (R2 keys, else GitHub deleteFile). */
+export async function deleteLibraryAssetObject(filename: string): Promise<void> {
+  const safeName = filename.replace(/^\/+/, '')
+  const key = libraryKey('assets', safeName)
+
+  if (r2PublicReadConfigured()) {
+    try {
+      const res = await fetch('/api/r2-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keys: [key] }),
+      })
+      if (res.ok) return
+      console.warn(`[r2/library] delete asset failed ${res.status}, falling back to GitHub`)
+    } catch (e) {
+      console.warn('[r2/library] delete asset failed, falling back to GitHub', e)
+    }
+  }
+
+  const octokit = await getAuthenticatedOctokit()
+  await ensureRepoGithub()
+  const owner = await getOwnerLogin(octokit)
+  const branch = await getRepoBranch(octokit, owner)
+  const path = `${LIBRARY_PREFIX}/assets/${safeName}`
+  const sha = await getShaIfExists(octokit, owner, path, branch)
+  if (!sha) return
+  try {
+    await octokit.rest.repos.deleteFile({
+      owner,
+      repo: REPO_NAME,
+      path,
+      message: `delete ${path}`,
+      sha,
+      branch,
+    })
+  } catch (e) {
+    if (is401(e)) handle401()
+    if (is404(e)) return
+    throw e
+  }
 }

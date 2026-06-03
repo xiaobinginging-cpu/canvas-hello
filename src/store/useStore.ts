@@ -151,6 +151,14 @@ export interface ProjectStoreState {
   openDetailCard: (imageId: string) => void
   closeDetailCard: () => void
 
+  /**
+   * 「存入素材库」弹窗目标图 id。独立于 selection（点弹窗不会因取消选中而消失），
+   * 在 CanvasPage 顶层渲染（同 DetailCard 模式，避开画布视口的取消选中逻辑）。
+   */
+  saveToLibraryImageId: string | null
+  openSaveToLibrary: (imageId: string) => void
+  closeSaveToLibrary: () => void
+
   /** Infinite canvas viewport (screen-space pan + scale). World = (screen - pan) / scale. */
   canvasPanX: number
   canvasPanY: number
@@ -289,6 +297,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
   videoObjectUrls: new Map(),
   uploadRetryBlobs: new Map(),
   detailCardImageId: null,
+  saveToLibraryImageId: null,
 
   canvasPanX: 0,
   canvasPanY: 0,
@@ -545,6 +554,10 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
 
   closeDetailCard: () => set({ detailCardImageId: null }),
 
+  openSaveToLibrary: (imageId) => set({ saveToLibraryImageId: imageId }),
+
+  closeSaveToLibrary: () => set({ saveToLibraryImageId: null }),
+
   setSelectedVideo: (id) =>
     set((state) => ({
       selectedVideoId: id,
@@ -631,6 +644,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       currentProjectMeta: nextMeta,
       selectedImageId: s.selectedImageId === id ? null : s.selectedImageId,
       detailCardImageId: s.detailCardImageId === id ? null : s.detailCardImageId,
+      saveToLibraryImageId: s.saveToLibraryImageId === id ? null : s.saveToLibraryImageId,
     })
     get().updateProject(s.currentProjectId, { updatedAt: now })
   },
@@ -767,6 +781,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
           selectedImageId: null,
           selectedVideoId: null,
           detailCardImageId: null,
+          saveToLibraryImageId: null,
           canvasPanX: 0,
           canvasPanY: 0,
           canvasScale: 1,
@@ -804,6 +819,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
           selectedImageId: null,
           selectedVideoId: null,
           detailCardImageId: null,
+          saveToLibraryImageId: null,
           canvasPanX: 0,
           canvasPanY: 0,
           canvasScale: 1,
@@ -875,6 +891,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         selectedImageId: null,
         selectedVideoId: null,
         detailCardImageId: null,
+        saveToLibraryImageId: null,
         canvasPanX: 0,
         canvasPanY: 0,
         canvasScale: 1,

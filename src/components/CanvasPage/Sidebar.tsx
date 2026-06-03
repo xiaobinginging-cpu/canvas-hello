@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Images } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import * as github from '../../lib/github.ts'
 import { useProjectStore } from '../../store/useStore.ts'
@@ -114,13 +115,23 @@ export default function Sidebar({
           )}
         </section>
 
-        <button
-          type="button"
-          onClick={() => navigate('/')}
-          className="mt-auto shrink-0 rounded border border-neutral-300 bg-white py-2 font-mono text-xs text-neutral-800 hover:bg-neutral-50"
-        >
-          → 返回项目库
-        </button>
+        <div className="mt-auto flex shrink-0 flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => navigate('/library')}
+            className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded border border-neutral-300 bg-white py-2 font-mono text-xs text-neutral-800 hover:bg-neutral-50"
+          >
+            <Images size={14} strokeWidth={2} aria-hidden />
+            素材库
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="shrink-0 rounded border border-neutral-300 bg-white py-2 font-mono text-xs text-neutral-800 hover:bg-neutral-50"
+          >
+            → 返回项目库
+          </button>
+        </div>
       </div>
     </aside>
   )

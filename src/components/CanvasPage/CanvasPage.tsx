@@ -15,6 +15,7 @@ import LogoViewportLoading from '../logo/LogoViewportLoading.tsx'
 import NewProjectModal from '../HomePage/NewProjectModal.tsx'
 import Canvas from './Canvas.tsx'
 import DetailCard from './DetailCard.tsx'
+import SaveToLibraryModal from './SaveToLibraryModal.tsx'
 import ImageGenPanel from './ImageGenPanel.tsx'
 import VideoGenPanel from './VideoGenPanel.tsx'
 import PromptGenPanel from './PromptGenPanel.tsx'
@@ -242,6 +243,7 @@ export default function CanvasPage() {
       />
 
       <DetailCard />
+      <SaveToLibraryModal />
 
       {toast ? (
         <div

@@ -1,4 +1,4 @@
-import { Download, Info, RotateCcw } from 'lucide-react'
+import { Download, FolderPlus, Info, RotateCcw } from 'lucide-react'
 import { downloadObjectUrl } from '../../lib/downloadObjectUrl.ts'
 import { coerceApimartModelId } from '../../lib/apimartGen.ts'
 import {
@@ -28,6 +28,7 @@ export default function ImageToolbar({
   const setImageGenPanelOpen = useProjectStore((s) => s.setImageGenPanelOpen)
   const setSelectedTool = useProjectStore((s) => s.setSelectedTool)
   const cancelCanvasSelection = useProjectStore((s) => s.cancelCanvasSelection)
+  const openSaveToLibrary = useProjectStore((s) => s.openSaveToLibrary)
 
   function applyRemixFromImage(): void {
     cancelCanvasSelection()
@@ -57,6 +58,15 @@ export default function ImageToolbar({
         onClick={() => applyRemixFromImage()}
       >
         <RotateCcw size={16} strokeWidth={2} aria-hidden />
+      </button>
+      <button
+        type="button"
+        title="存入素材库"
+        disabled={image.isLoading || image.src === 'pending'}
+        className="rounded p-1.5 text-neutral-900 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40"
+        onClick={() => openSaveToLibrary(image.id)}
+      >
+        <FolderPlus size={16} strokeWidth={2} aria-hidden />
       </button>
       <button
         type="button"

@@ -1,6 +1,8 @@
 import { useRef, useState, type RefObject } from 'react'
+import { BoxSelect, Images, Upload } from 'lucide-react'
 import { uploadFilesToCanvas } from '../../lib/canvasUpload.ts'
 import { useProjectStore } from '../../store/useStore.ts'
+import LibraryPickerModal from './LibraryPickerModal.tsx'
 
 const VIDEO_REF_HELP =
   '图生视频参考须为已同步到 GitHub 的图片（路径 assets/…）；上传或生成中的图片请等待保存完成后再从画布选择；也可先用图像生成落盘后选用。'
@@ -19,6 +21,7 @@ export default function ReferenceImagePicker({
   allowLocalUpload?: boolean
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [libraryOpen, setLibraryOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const enterCanvasSelectionMode = useProjectStore((s) => s.enterCanvasSelectionMode)
@@ -68,25 +71,39 @@ export default function ReferenceImagePicker({
             <button
               type="button"
               role="menuitem"
-              className="block w-full px-3 py-2 text-left text-xs text-neutral-900 hover:bg-neutral-100"
+              className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-xs text-neutral-900 hover:bg-neutral-100"
               onClick={() => {
                 setMenuOpen(false)
                 fileRef.current?.click()
               }}
             >
-              📎 从本地上传
+              <Upload size={14} strokeWidth={2} aria-hidden />
+              从本地上传
             </button>
           ) : null}
           <button
             type="button"
             role="menuitem"
-            className="block w-full px-3 py-2 text-left text-xs text-neutral-900 hover:bg-neutral-100"
+            className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-xs text-neutral-900 hover:bg-neutral-100"
             onClick={() => {
               setMenuOpen(false)
               enterCanvasSelectionMode(selectionTarget)
             }}
           >
-            ⊞ 从画布选择
+            <BoxSelect size={14} strokeWidth={2} aria-hidden />
+            从画布选择
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-xs text-neutral-900 hover:bg-neutral-100"
+            onClick={() => {
+              setMenuOpen(false)
+              setLibraryOpen(true)
+            }}
+          >
+            <Images size={14} strokeWidth={2} aria-hidden />
+            从素材库
           </button>
           {selectionTarget === 'video-gen' ? (
             <p className="border-t border-neutral-100 px-3 pb-2 pt-1 text-[10px] leading-snug text-neutral-500">
@@ -94,6 +111,17 @@ export default function ReferenceImagePicker({
             </p>
           ) : null}
         </div>
+      ) : null}
+
+      {libraryOpen ? (
+        <LibraryPickerModal
+          canvasViewportRef={canvasViewportRef}
+          onClose={() => setLibraryOpen(false)}
+          onAdded={(ids) => {
+            if (ids.length) onAddReferenceIds(ids)
+            setLibraryOpen(false)
+          }}
+        />
       ) : null}
     </div>
   )
