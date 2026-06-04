@@ -21,8 +21,7 @@ export const CHAT_AGENTS: readonly ChatAgent[] = [
     label: 'Gemini',
     keyProvider: 'google',
     models: [
-      // TODO 3.5：若斌确认准确 model id 后加（例：gemini-3.5-flash-preview?）
-      { value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash' },
+      { value: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
       { value: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro' },
     ],
   },
