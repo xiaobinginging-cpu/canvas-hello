@@ -54,9 +54,9 @@ export const CHAT_AGENTS: readonly ChatAgent[] = [
     label: 'Qwen',
     keyProvider: 'qwen',
     models: [
-      // DashScope API id 多为小写别名；Qwen3.7-Max/3.6-Plus 显示名上游不识别，改稳定 latest 别名
-      { value: 'qwen-max-latest', label: 'Qwen Max (latest)' },
-      { value: 'qwen-plus-latest', label: 'Qwen Plus (latest)' },
+      // DashScope API id 小写；旗舰 Qwen3.7-Max → qwen3.7-max（qwen-max-latest 是老别名、key 未授权 → 403）
+      { value: 'qwen3.7-max', label: 'Qwen3.7 Max' },
+      { value: 'qwen-plus-latest', label: 'Qwen Plus' },
     ],
   },
   {
