@@ -1,7 +1,7 @@
 import OpenAI from 'openai'
 import {
+  API_KEY_LABEL,
   getApiKey,
-  invalidApiKeyMessage,
   isUnauthorizedError,
   missingApiKeyMessage,
 } from './apiKeys.ts'
@@ -61,7 +61,13 @@ export async function streamChat(opts: {
       }
     }
   } catch (e) {
-    if (isUnauthorizedError(e)) throw new Error(invalidApiKeyMessage(agent.keyProvider), { cause: e })
+    // 401/403 不一定是 key 失效——也可能是该 model 无访问权限（如 Qwen Plus 可用但 Max 未开通）。
+    if (isUnauthorizedError(e)) {
+      throw new Error(
+        `${API_KEY_LABEL[agent.keyProvider]}：鉴权失败（key 失效，或当前账号无「${opts.model}」该模型权限）`,
+        { cause: e },
+      )
+    }
     throw e
   }
   return full
