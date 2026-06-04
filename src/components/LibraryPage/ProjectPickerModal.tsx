@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Pin } from 'lucide-react'
 import * as github from '../../lib/github.ts'
 import { useProjectStore } from '../../store/useStore.ts'
 import type { ProjectMeta } from '../../types/project.ts'
@@ -101,7 +102,9 @@ export default function ProjectPickerModal({
                           : 'border-transparent text-neutral-800 hover:border-neutral-200 hover:bg-neutral-50'
                       }`}
                     >
-                      {p.pinned ? <span className="text-[10px]">📌</span> : null}
+                      {p.pinned ? (
+                        <Pin size={12} strokeWidth={2} aria-hidden className="shrink-0 fill-current" />
+                      ) : null}
                       <span className="line-clamp-1 break-all">
                         {p.name.trim() || p.id.slice(0, 8)}
                       </span>

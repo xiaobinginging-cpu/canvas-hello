@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Pencil, Pin, Trash2 } from 'lucide-react'
 import type { Image as CanvasImage } from '../../types/image.ts'
 import type { ProjectMeta } from '../../types/project'
 import * as github from '../../lib/github.ts'
@@ -181,9 +182,18 @@ export default function ProjectCard({
             e.stopPropagation()
             onTogglePin()
           }}
-          className="pointer-events-auto inline-flex min-h-[2rem] min-w-[2rem] items-center justify-center rounded bg-white/95 px-2 py-1 font-mono text-sm text-neutral-900 ring-1 ring-neutral-300 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
+          className="pointer-events-auto inline-flex min-h-[2rem] min-w-[2rem] items-center justify-center rounded bg-white/95 px-2 py-1 text-neutral-900 ring-1 ring-neutral-300 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {pinBusy ? <InlineSpinner /> : '📌'}
+          {pinBusy ? (
+            <InlineSpinner />
+          ) : (
+            <Pin
+              size={15}
+              strokeWidth={2}
+              aria-hidden
+              className={meta.pinned ? 'fill-current' : undefined}
+            />
+          )}
         </button>
         <button
           type="button"
@@ -194,9 +204,9 @@ export default function ProjectCard({
             e.stopPropagation()
             onRename()
           }}
-          className="pointer-events-auto rounded bg-white/95 px-2 py-1 font-mono text-sm text-neutral-900 ring-1 ring-neutral-300 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
+          className="pointer-events-auto inline-flex min-h-[2rem] min-w-[2rem] items-center justify-center rounded bg-white/95 px-2 py-1 text-neutral-900 ring-1 ring-neutral-300 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          ✏️
+          <Pencil size={15} strokeWidth={2} aria-hidden />
         </button>
         <button
           type="button"
@@ -207,9 +217,9 @@ export default function ProjectCard({
             e.stopPropagation()
             onDelete()
           }}
-          className="pointer-events-auto rounded bg-white/95 px-2 py-1 font-mono text-sm text-neutral-900 ring-1 ring-neutral-300 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
+          className="pointer-events-auto inline-flex min-h-[2rem] min-w-[2rem] items-center justify-center rounded bg-white/95 px-2 py-1 text-neutral-900 ring-1 ring-neutral-300 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          🗑️
+          <Trash2 size={15} strokeWidth={2} aria-hidden />
         </button>
       </div>
     </div>

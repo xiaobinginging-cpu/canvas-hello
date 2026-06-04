@@ -1,4 +1,4 @@
-import { Zap, X } from 'lucide-react'
+import { Wand2, Zap, X } from 'lucide-react'
 import { useMemo, type RefObject } from 'react'
 import { Link } from 'react-router-dom'
 import { runCanvasPromptGeneration } from '../../lib/canvasPromptGen.ts'
@@ -66,7 +66,10 @@ export default function PromptGenPanel({
     >
       <div className="flex flex-col gap-3 p-4">
         <div className="flex items-start justify-between gap-2">
-          <h2 className="text-sm font-medium text-neutral-900">📝→ 提示词生成器</h2>
+          <h2 className="flex items-center gap-1.5 text-sm font-medium text-neutral-900">
+            <Wand2 size={16} strokeWidth={2} aria-hidden />
+            提示词生成器
+          </h2>
           <button
             type="button"
             title="关闭"

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Images } from 'lucide-react'
+import { Images, LayoutGrid, Pin } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import * as github from '../../lib/github.ts'
 import { useProjectStore } from '../../store/useStore.ts'
@@ -77,7 +77,9 @@ export default function Sidebar({
 
         {pinnedProjects.length > 0 ? (
           <section className="min-h-0">
-            <p className="mb-2 font-mono text-[10px] uppercase tracking-wider text-neutral-400">📌 Pinned</p>
+            <p className="mb-2 flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-neutral-400">
+              <Pin size={10} strokeWidth={2} aria-hidden /> Pinned
+            </p>
             <ul className="space-y-1">
               {pinnedProjects.map((p) => (
                 <SidebarProjectRow
@@ -127,9 +129,10 @@ export default function Sidebar({
           <button
             type="button"
             onClick={() => navigate('/')}
-            className="shrink-0 rounded border border-neutral-300 bg-white py-2 font-mono text-xs text-neutral-800 hover:bg-neutral-50"
+            className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded border border-neutral-300 bg-white py-2 font-mono text-xs text-neutral-800 hover:bg-neutral-50"
           >
-            → 返回项目库
+            <LayoutGrid size={14} strokeWidth={2} aria-hidden />
+            返回项目库
           </button>
         </div>
       </div>
@@ -173,9 +176,9 @@ function SidebarProjectRow({
           e.stopPropagation()
           onTogglePin()
         }}
-        className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 font-mono text-xs opacity-0 transition-opacity hover:bg-neutral-200 group-hover:opacity-100 disabled:opacity-30"
+        className="absolute right-1 top-1/2 inline-flex -translate-y-1/2 items-center justify-center rounded p-1 font-mono text-xs text-neutral-700 opacity-0 transition-opacity hover:bg-neutral-200 group-hover:opacity-100 disabled:opacity-30"
       >
-        {pinBusy ? '…' : '📌'}
+        {pinBusy ? '…' : <Pin size={12} strokeWidth={2} aria-hidden className={meta.pinned ? 'fill-current' : undefined} />}
       </button>
     </li>
   )

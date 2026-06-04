@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Images, Settings } from 'lucide-react'
+import { Images, LayoutGrid, Pin, Settings } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { customAlphabet } from 'nanoid'
 import * as github from '../../lib/github.ts'
@@ -245,8 +245,12 @@ export default function HomePage() {
   return (
     <div className="flex h-svh min-h-0 flex-col overflow-hidden bg-[#FAF8F5] font-mono text-neutral-900 selection:bg-neutral-200">
       <header className="flex shrink-0 items-center justify-between border-b border-neutral-200 bg-[#FAF8F5] px-8 py-5">
-        <span className="flex shrink-0 items-center">
+        <span className="flex shrink-0 items-center gap-6">
           <Logo variant="solid" size={32} />
+          <span className="flex items-center gap-2 text-sm font-medium text-neutral-800">
+            <LayoutGrid size={18} strokeWidth={2} aria-hidden />
+            项目库
+          </span>
         </span>
         <div className="flex items-center gap-6 text-sm">
           <Link
@@ -327,8 +331,8 @@ export default function HomePage() {
 
             {pinnedProjects.length > 0 ? (
               <section className="mb-12">
-                <p className="mb-4 font-mono text-xs uppercase tracking-wider text-neutral-400">
-                  📌 Pinned
+                <p className="mb-4 flex items-center gap-1.5 font-mono text-xs uppercase tracking-wider text-neutral-400">
+                  <Pin size={12} strokeWidth={2} aria-hidden /> Pinned
                 </p>
                 <ProjectGrid>
                   {pinnedProjects.map((p) => (

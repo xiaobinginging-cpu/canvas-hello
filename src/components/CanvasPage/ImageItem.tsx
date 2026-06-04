@@ -1,4 +1,5 @@
 import { memo, useEffect, useState } from 'react'
+import { ImageOff } from 'lucide-react'
 import { Rnd } from 'react-rnd'
 import * as github from '../../lib/github.ts'
 import { schedulePersistCanvas } from '../../lib/canvasPersist.ts'
@@ -321,10 +322,8 @@ function ImageItem({ image }: { image: CanvasImage }) {
               </div>
             </div>
           ) : assetFetchFailed || !displayUrl ? (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-neutral-200 text-neutral-500">
-              <span className="text-2xl" aria-hidden>
-                🖼️
-              </span>
+            <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-neutral-200 text-neutral-500">
+              <ImageOff size={28} strokeWidth={1.5} aria-hidden />
               <span className="font-mono text-[10px]">加载失败</span>
             </div>
           ) : (

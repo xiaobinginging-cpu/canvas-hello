@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Images, Upload } from 'lucide-react'
+import { Images, LayoutGrid, Upload } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import * as github from '../../lib/github.ts'
 import {
@@ -162,9 +162,11 @@ export default function AssetLibraryPage() {
         </span>
         <Link
           to="/"
-          className="text-sm text-neutral-900 underline decoration-neutral-400 underline-offset-4 hover:decoration-neutral-900"
+          className="inline-flex items-center gap-1.5 text-sm text-neutral-900 hover:text-neutral-600"
+          title="项目库"
         >
-          → 项目库
+          <LayoutGrid size={18} strokeWidth={2} aria-hidden />
+          项目库
         </Link>
       </header>
 

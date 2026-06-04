@@ -1,4 +1,5 @@
 import { memo, useEffect, useState } from 'react'
+import { VideoOff } from 'lucide-react'
 import { Rnd } from 'react-rnd'
 import * as github from '../../lib/github.ts'
 import { cancelVideoGeneration } from '../../lib/canvasGeneration.ts'
@@ -275,10 +276,8 @@ function VideoItem({ video }: { video: CanvasVideo }) {
               </div>
             </div>
           ) : assetFetchFailed || !displayUrl ? (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-neutral-200 text-neutral-500">
-              <span className="text-2xl" aria-hidden>
-                🎬
-              </span>
+            <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-neutral-200 text-neutral-500">
+              <VideoOff size={28} strokeWidth={1.5} aria-hidden />
               <span className="font-mono text-[10px]">加载失败</span>
             </div>
           ) : (
