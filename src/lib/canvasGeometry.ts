@@ -1,3 +1,9 @@
+/**
+ * 上传 / 从素材库放置到画布时的默认显示上限（最长边 px）。
+ * 之前 600 太小——4K 上传图显示比生成图还小；1024 更接近生成图量级（仍可手动拖拽缩放）。
+ */
+export const CANVAS_PLACE_MAX_PX = 1024
+
 /** Cap longest side to `maxPx`, preserve aspect ratio. */
 export function capDisplaySize(
   naturalW: number,

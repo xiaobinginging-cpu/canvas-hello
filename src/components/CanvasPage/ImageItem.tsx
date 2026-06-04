@@ -22,6 +22,8 @@ function ImageItem({ image }: { image: CanvasImage }) {
   const objectUrl = useProjectStore((s) => s.imageObjectUrls.get(image.id))
   const updateImagePosition = useProjectStore((s) => s.updateImagePosition)
   const patchImagePositionLive = useProjectStore((s) => s.patchImagePositionLive)
+  const updateImageBounds = useProjectStore((s) => s.updateImageBounds)
+  const patchImageBoundsLive = useProjectStore((s) => s.patchImageBoundsLive)
   const setSelectedImage = useProjectStore((s) => s.setSelectedImage)
   const canvasScale = useProjectStore((s) => s.canvasScale)
   const isCanvasSelectionMode = useProjectStore((s) => s.isCanvasSelectionMode)
@@ -124,7 +126,15 @@ function ImageItem({ image }: { image: CanvasImage }) {
       scale={canvasScale}
       cancel=".no-rnd-drag"
       disableDragging={isCanvasSelectionMode}
-      enableResizing={false}
+      /* 仅选中时开四角缩放 + 锁定比例（图片等比放大缩小，不变形）。 */
+      enableResizing={
+        selected && !isCanvasSelectionMode
+          ? { topLeft: true, topRight: true, bottomLeft: true, bottomRight: true }
+          : false
+      }
+      lockAspectRatio
+      minWidth={40}
+      minHeight={40}
       size={{ width: image.size.w, height: image.size.h }}
       position={{ x: image.position.x, y: image.position.y }}
       className="!pointer-events-auto"
@@ -148,6 +158,24 @@ function ImageItem({ image }: { image: CanvasImage }) {
       onDrag={(_e, d) => {
         document.body.style.cursor = 'grabbing'
         patchImagePositionLive(image.id, { x: d.x, y: d.y })
+      }}
+      onResize={(_e, _dir, ref, _delta, position) => {
+        patchImageBoundsLive(image.id, {
+          x: position.x,
+          y: position.y,
+          width: parseFloat(ref.style.width),
+          height: parseFloat(ref.style.height),
+        })
+      }}
+      onResizeStop={(_e, _dir, ref, _delta, position) => {
+        if (!projectId) return
+        updateImageBounds(image.id, {
+          x: position.x,
+          y: position.y,
+          width: parseFloat(ref.style.width),
+          height: parseFloat(ref.style.height),
+        })
+        schedulePersistCanvas(projectId, 500)
       }}
     >
       <div

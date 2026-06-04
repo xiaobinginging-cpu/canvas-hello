@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid'
 import * as github from './github.ts'
 import {
+  CANVAS_PLACE_MAX_PX,
   capDisplaySize,
   centerWorldPositionInViewport,
   clientPointToWorldCanvas,
@@ -76,7 +77,7 @@ export async function uploadFilesToCanvas(
       /* fall through to default size */
     }
 
-    const size = capDisplaySize(naturalW, naturalH, 600)
+    const size = capDisplaySize(naturalW, naturalH, CANVAS_PLACE_MAX_PX)
 
     const cascadeIndex = imageCountAtStart + i
     const stagger = cascadeIndex * CASCADE_STEP_PX

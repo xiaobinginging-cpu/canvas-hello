@@ -125,6 +125,16 @@ export interface ProjectStoreState {
   updateImagePosition: (id: string, position: { x: number; y: number }) => void
   /** Drag-only: updates canvas coordinates without bumping project metadata. */
   patchImagePositionLive: (id: string, position: { x: number; y: number }) => void
+  /** Resize commit: updates position + size, bumps project metadata. */
+  updateImageBounds: (
+    id: string,
+    bounds: { x: number; y: number; width: number; height: number },
+  ) => void
+  /** Resize-only: live position + size without bumping project metadata. */
+  patchImageBoundsLive: (
+    id: string,
+    bounds: { x: number; y: number; width: number; height: number },
+  ) => void
   removeImage: (id: string) => void
   addVideo: (video: VideoItem) => void
   patchVideo: (id: string, patch: Partial<VideoItem>) => void
@@ -629,6 +639,34 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     if (!s.currentProjectCanvas) return
     const images = s.currentProjectCanvas.images.map((im) =>
       im.id === id ? { ...im, position } : im,
+    )
+    set({ currentProjectCanvas: { ...s.currentProjectCanvas, images } })
+  },
+
+  updateImageBounds: (id, bounds) => {
+    const s = get()
+    if (!s.currentProjectId || !s.currentProjectMeta || !s.currentProjectCanvas) return
+    const now = Date.now()
+    const nextMeta = { ...s.currentProjectMeta, updatedAt: now }
+    const images = s.currentProjectCanvas.images.map((im) =>
+      im.id === id
+        ? { ...im, position: { x: bounds.x, y: bounds.y }, size: { w: bounds.width, h: bounds.height } }
+        : im,
+    )
+    set({
+      currentProjectCanvas: { ...s.currentProjectCanvas, images },
+      currentProjectMeta: nextMeta,
+    })
+    get().updateProject(s.currentProjectId, { updatedAt: now })
+  },
+
+  patchImageBoundsLive: (id, bounds) => {
+    const s = get()
+    if (!s.currentProjectCanvas) return
+    const images = s.currentProjectCanvas.images.map((im) =>
+      im.id === id
+        ? { ...im, position: { x: bounds.x, y: bounds.y }, size: { w: bounds.width, h: bounds.height } }
+        : im,
     )
     set({ currentProjectCanvas: { ...s.currentProjectCanvas, images } })
   },

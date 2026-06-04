@@ -10,6 +10,7 @@
  */
 import { nanoid } from 'nanoid'
 import {
+  CANVAS_PLACE_MAX_PX,
   capDisplaySize,
   centerWorldPositionInViewport,
   readImageFileDimensions,
@@ -111,7 +112,7 @@ export async function addLibraryMaterialToCanvasAsReference(
   const src = `assets/${projAssetName}`
 
   const dims = material.thumb ?? { w: 300, h: 300 }
-  const size = capDisplaySize(dims.w, dims.h, 600)
+  const size = capDisplaySize(dims.w, dims.h, CANVAS_PLACE_MAX_PX)
 
   const { canvasPanX, canvasPanY, canvasScale } = state
   const stagger = canvas.images.length * CASCADE_STEP_PX
@@ -227,7 +228,7 @@ export async function addLibraryMaterialToProject(
   const ext = imageExt(blob.type, material.src)
   const projAssetName = `img-${imgId}.${ext}`
   const dims = material.thumb ?? { w: 300, h: 300 }
-  const size = capDisplaySize(dims.w, dims.h, 600)
+  const size = capDisplaySize(dims.w, dims.h, CANVAS_PLACE_MAX_PX)
   const n = canvas.images.length
   const position = { x: 40 + n * CASCADE_STEP_PX, y: 40 + n * CASCADE_STEP_PX }
 
