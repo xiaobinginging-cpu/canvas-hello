@@ -1,9 +1,20 @@
-export type ApiKeyProvider = 'google' | 'kimi' | 'apimart'
+export type ApiKeyProvider =
+  | 'google'
+  | 'kimi'
+  | 'apimart'
+  | 'mimo'
+  | 'glm'
+  | 'qwen'
+  | 'deepseek'
 
 const STORAGE: Record<ApiKeyProvider, string> = {
   google: 'canvas-hello.api-key.google',
   kimi: 'canvas-hello.api-key.kimi',
   apimart: 'canvas-hello.api-key.apimart',
+  mimo: 'canvas-hello.api-key.mimo',
+  glm: 'canvas-hello.api-key.glm',
+  qwen: 'canvas-hello.api-key.qwen',
+  deepseek: 'canvas-hello.api-key.deepseek',
 }
 
 export const API_KEYS_CHANGED_EVENT = 'canvas-hello-api-keys-changed'
@@ -12,6 +23,10 @@ export const API_KEY_LABEL: Record<ApiKeyProvider, string> = {
   google: 'Google AI',
   kimi: 'Kimi',
   apimart: 'APIMart',
+  mimo: 'MiMo',
+  glm: 'GLM (智谱)',
+  qwen: 'Qwen (通义)',
+  deepseek: 'DeepSeek',
 }
 
 export function getApiKey(provider: ApiKeyProvider): string | null {

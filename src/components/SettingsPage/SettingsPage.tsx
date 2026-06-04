@@ -29,13 +29,17 @@ const EMPTY_STORED: Record<ApiKeyProvider, string> = {
   google: '',
   kimi: '',
   apimart: '',
+  mimo: '',
+  glm: '',
+  qwen: '',
+  deepseek: '',
 }
 
 const KEY_FIELDS: {
   provider: ApiKeyProvider
   label: string
-  helpUrl: string
-  helpLabel: string
+  helpUrl?: string
+  helpLabel?: string
 }[] = [
   {
     provider: 'google',
@@ -55,6 +59,28 @@ const KEY_FIELDS: {
     helpUrl: 'https://apimart.ai/keys',
     helpLabel: '去哪拿 key →',
   },
+  {
+    provider: 'deepseek',
+    label: 'DeepSeek',
+    helpUrl: 'https://platform.deepseek.com/api_keys',
+    helpLabel: '去哪拿 key →',
+  },
+  {
+    provider: 'glm',
+    label: 'GLM（智谱）',
+    helpUrl: 'https://open.bigmodel.cn/usercenter/apikeys',
+    helpLabel: '去哪拿 key →',
+  },
+  {
+    provider: 'qwen',
+    label: 'Qwen（通义 / DashScope）',
+    helpUrl: 'https://dashscope.console.aliyun.com/apiKey',
+    helpLabel: '去哪拿 key →',
+  },
+  {
+    provider: 'mimo',
+    label: 'MiMo（小米）',
+  },
 ]
 
 function newRandomId(): string {
@@ -69,12 +95,20 @@ export default function SettingsPage() {
     google: false,
     kimi: false,
     apimart: false,
+    mimo: false,
+    glm: false,
+    qwen: false,
+    deepseek: false,
   })
   const [draft, setDraft] = useState<Record<ApiKeyProvider, string>>(EMPTY_STORED)
   const [visible, setVisible] = useState<Record<ApiKeyProvider, boolean>>({
     google: false,
     kimi: false,
     apimart: false,
+    mimo: false,
+    glm: false,
+    qwen: false,
+    deepseek: false,
   })
   const [nameSuffix, setNameSuffix] = useState<Record<ApiKeyProvider, string>>(EMPTY_STORED)
 
@@ -88,6 +122,10 @@ export default function SettingsPage() {
       google: getApiKey('google') ?? '',
       kimi: getApiKey('kimi') ?? '',
       apimart: getApiKey('apimart') ?? '',
+      mimo: getApiKey('mimo') ?? '',
+      glm: getApiKey('glm') ?? '',
+      qwen: getApiKey('qwen') ?? '',
+      deepseek: getApiKey('deepseek') ?? '',
     })
   }, [])
 
@@ -280,14 +318,16 @@ export default function SettingsPage() {
                   </div>
                 )}
 
-                <a
-                  href={helpUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={`text-xs ${SAGE_LINK}`}
-                >
-                  {helpLabel}
-                </a>
+                {helpUrl ? (
+                  <a
+                    href={helpUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={`text-xs ${SAGE_LINK}`}
+                  >
+                    {helpLabel ?? '去哪拿 key →'}
+                  </a>
+                ) : null}
               </div>
             )
           })}

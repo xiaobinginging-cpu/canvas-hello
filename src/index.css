@@ -125,3 +125,57 @@ code {
   background: var(--code-bg);
 }
 
+
+/* Chat 小精灵：软发光球（参考 HeyGen 那种）——漂浮 + 形状蠕动 + 颜色流动 + 眨眼。
+   结构：外层 .chat-sprite-orb 只负责漂浮；发光层 .chat-sprite-glow 模糊+变形+变色；眼睛单独清晰层。 */
+@keyframes sprite-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+@keyframes sprite-blink {
+  0%, 91%, 100% { transform: scaleY(1); }
+  95.5% { transform: scaleY(0.12); }
+}
+/* 形状蠕动：动 border-radius 做有机 blob 变形。 */
+@keyframes sprite-morph {
+  0%, 100% { border-radius: 58% 42% 55% 45% / 55% 45% 55% 45%; }
+  33% { border-radius: 45% 55% 42% 58% / 50% 58% 42% 50%; }
+  66% { border-radius: 52% 48% 60% 40% / 46% 52% 48% 54%; }
+}
+/* 小克的橙：色相只在暖色区微旋（橙↔琥珀）+ 亮度呼吸，克制不跳色。 */
+@keyframes sprite-shimmer {
+  0%, 100% { filter: blur(1.5px) hue-rotate(-10deg) brightness(0.96); }
+  50% { filter: blur(1.5px) hue-rotate(12deg) brightness(1.14); }
+}
+/* 辉光珊瑚呼吸（Anthropic 珊瑚 #CC7C5D / rgb 204,124,93）。 */
+@keyframes sprite-glow {
+  0%, 100% { box-shadow: 0 0 18px 5px rgba(204, 124, 93, 0.42); }
+  50% { box-shadow: 0 0 32px 12px rgba(226, 156, 128, 0.56); }
+}
+.chat-sprite-orb {
+  animation: sprite-float 3.2s ease-in-out infinite;
+}
+.chat-sprite-glow {
+  background: radial-gradient(
+    circle at 50% 42%,
+    #cc7c5d 0%,
+    #e3a991 34%,
+    #f4dccf 64%,
+    rgba(244, 220, 207, 0) 84%
+  );
+  animation:
+    sprite-morph 6s ease-in-out infinite,
+    sprite-shimmer 5s ease-in-out infinite,
+    sprite-glow 4s ease-in-out infinite;
+}
+.chat-sprite-eye {
+  transform-origin: center;
+  animation: sprite-blink 5.5s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-sprite-orb,
+  .chat-sprite-glow,
+  .chat-sprite-eye {
+    animation: none;
+  }
+}

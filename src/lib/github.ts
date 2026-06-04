@@ -7,6 +7,7 @@
 import { Octokit } from '@octokit/rest'
 import type { CanvasData, ProjectMeta } from '../types/project'
 import { EMPTY_LIBRARY, normalizeLibraryData, type LibraryData } from '../types/library'
+import { EMPTY_CHAT, normalizeChatData, type ChatData } from '../types/chat'
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
@@ -19,6 +20,8 @@ const REPO_NAME = 'canvas-tool-projects'
 const PROJECT_PREFIX = 'project-'
 /** 跨 project 全局素材库根目录（下划线前缀避免与 `project-{slug}` 撞）。见 `canvas-spec.md` §1「素材库」。 */
 const LIBRARY_PREFIX = '_library'
+/** Chat 浮动小精灵会话同步根目录（多设备共享，同 `_library` 模式）。 */
+const CHAT_PREFIX = '_chat'
 
 // ─── Cloudflare R2 (writes via Vercel `/api/r2-*`; secrets stay server-side) ─
 
@@ -1725,4 +1728,65 @@ export async function deleteLibraryAssetObject(filename: string): Promise<void> 
     if (is404(e)) return
     throw e
   }
+}
+
+// ─── Chat 小精灵会话同步 (`_chat/`) ─────────────────────────────────────────────
+//
+// 多设备共享聊天历史，复用上方 R2 + GitHub 基建（同 `_library`）。仅一个 JSON 索引、无二进制。
+// 注：发图的 chat 图片二进制走 project/library 既有路径或 `_chat/assets/`（Phase 2）。
+
+function chatKey(...segments: string[]): string {
+  const rest = segments.map((s) => s.replace(/^\/+/, '').replace(/\/+$/, '')).filter(Boolean)
+  return [CHAT_PREFIX, ...rest].join('/')
+}
+
+/** Loads `_chat/chat.json`. Missing → empty; transient errors throw. 同 loadLibrary：不走 CDN。 */
+export async function loadChat(): Promise<ChatData> {
+  if (r2PublicReadConfigured()) {
+    const { found, text } = await r2FetchTextStrict(chatKey('chat.json'))
+    if (!found || !text) return { ...EMPTY_CHAT }
+    try {
+      return normalizeChatData(JSON.parse(text))
+    } catch {
+      throw new Error('[r2] chat.json invalid JSON')
+    }
+  }
+
+  const octokit = await getAuthenticatedOctokit()
+  await ensureRepoGithub()
+  const owner = await getOwnerLogin(octokit)
+  const branch = await getRepoBranch(octokit, owner)
+  try {
+    const json = await readRepoTextFileViaContentsApi(octokit, owner, branch, `${CHAT_PREFIX}/chat.json`)
+    return normalizeChatData(JSON.parse(json))
+  } catch (e) {
+    if (is401(e)) handle401()
+    if (is404(e)) return { ...EMPTY_CHAT }
+    throw e
+  }
+}
+
+async function flushChatToGitHub(data: ChatData): Promise<void> {
+  const octokit = await getAuthenticatedOctokit()
+  await ensureRepoGithub()
+  const owner = await getOwnerLogin(octokit)
+  const branch = await getRepoBranch(octokit, owner)
+  const json = `${JSON.stringify(data, null, 2)}\n`
+  const path = `${CHAT_PREFIX}/chat.json`
+  const sha = await getShaIfExists(octokit, owner, path, branch)
+  await putTextFile(octokit, owner, branch, path, json, `update _chat - ${new Date().toISOString()}`, sha)
+}
+
+/** Writes `_chat/chat.json`. Prefers R2, falls back to GitHub (同 saveLibrary)。 */
+export async function saveChat(data: ChatData): Promise<void> {
+  const json = `${JSON.stringify(data, null, 2)}\n`
+  if (r2PublicReadConfigured()) {
+    try {
+      await r2UploadViaApi(chatKey('chat.json'), new Blob([json], { type: 'application/json' }))
+      return
+    } catch (e) {
+      console.warn('[r2/chat] save failed, falling back to GitHub', e)
+    }
+  }
+  await flushChatToGitHub(data)
 }
