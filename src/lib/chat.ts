@@ -61,14 +61,19 @@ export async function streamChat(opts: {
       }
     }
   } catch (e) {
-    // 401/403 不一定是 key 失效——也可能是该 model 无访问权限（如 Qwen Plus 可用但 Max 未开通）。
+    // 透出上游原始报错，便于排查（之前笼统包成「key 失效」会掩盖真正原因）。
+    const status =
+      typeof e === 'object' && e !== null && 'status' in e
+        ? (e as { status?: unknown }).status
+        : undefined
+    const detail = e instanceof Error ? e.message : String(e)
+    const label = API_KEY_LABEL[agent.keyProvider]
     if (isUnauthorizedError(e)) {
-      throw new Error(
-        `${API_KEY_LABEL[agent.keyProvider]}：鉴权失败（key 失效，或当前账号无「${opts.model}」该模型权限）`,
-        { cause: e },
-      )
+      throw new Error(`${label} 鉴权失败 (${status})：${detail}（key 失效 / 或该模型无权限）`, {
+        cause: e,
+      })
     }
-    throw e
+    throw new Error(`${label} (${opts.model})：${detail}`, { cause: e })
   }
   return full
 }
