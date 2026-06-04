@@ -75,9 +75,40 @@ async function r2FetchTextFromPublic(key: string): Promise<string | null> {
   }
 }
 
+/**
+ * 预签名直传：拿 R2 PUT URL → 浏览器把 blob 直接 PUT 到 R2，绕过 Vercel ~4.5MB body 上限。
+ * 需 R2 bucket 配 CORS 允许 PUT（否则浏览器拦截、抛错走下面 base64 兜底）。
+ */
+async function r2PutViaPresignedUrl(key: string, blob: Blob, contentType: string): Promise<void> {
+  const res = await fetch('/api/r2-presign', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key, contentType }),
+  })
+  if (!res.ok) {
+    const j = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(j.error || `[r2] presign failed ${res.status}`)
+  }
+  const { url } = (await res.json()) as { url?: string }
+  if (!url) throw new Error('[r2] presign returned no url')
+
+  const put = await fetch(url, { method: 'PUT', headers: { 'Content-Type': contentType }, body: blob })
+  if (!put.ok) throw new Error(`[r2] direct PUT failed ${put.status}`)
+}
+
 async function r2UploadViaApi(key: string, blob: Blob): Promise<void> {
-  const base64 = await blobToBase64(blob)
   const contentType = blob.type && blob.type.length > 0 ? blob.type : 'application/octet-stream'
+
+  // 1) 预签名直传（大文件 / 视频走这条，绕过 Vercel body 上限）。
+  try {
+    await r2PutViaPresignedUrl(key, blob, contentType)
+    return
+  } catch (e) {
+    console.warn('[r2] presigned direct PUT failed, falling back to base64 API upload', e)
+  }
+
+  // 2) 兜底：base64 JSON 走 serverless（小文件可用；CORS 未配时仍能传小图，但 >~4.5MB 会被上限拦）。
+  const base64 = await blobToBase64(blob)
   const res = await fetch('/api/r2-upload', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
