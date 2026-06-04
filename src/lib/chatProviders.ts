@@ -21,7 +21,8 @@ export const CHAT_AGENTS: readonly ChatAgent[] = [
     label: 'Gemini',
     keyProvider: 'google',
     models: [
-      { value: 'gemini-3-flash', label: 'Gemini 3 Flash' },
+      // TODO 3.5：若斌确认准确 model id 后加（例：gemini-3.5-flash-preview?）
+      { value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash' },
       { value: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro' },
     ],
   },
@@ -54,8 +55,9 @@ export const CHAT_AGENTS: readonly ChatAgent[] = [
     label: 'Qwen',
     keyProvider: 'qwen',
     models: [
-      { value: 'Qwen3.7-Max', label: 'Qwen3.7 Max' },
-      { value: 'Qwen3.6-Plus', label: 'Qwen3.6 Plus' },
+      // DashScope API id 多为小写别名；Qwen3.7-Max/3.6-Plus 显示名上游不识别，改稳定 latest 别名
+      { value: 'qwen-max-latest', label: 'Qwen Max (latest)' },
+      { value: 'qwen-plus-latest', label: 'Qwen Plus (latest)' },
     ],
   },
   {
