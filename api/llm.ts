@@ -1,11 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
 /**
- * 通用 LLM 代理：`/api/llm/<provider>/<subpath>` → 转发到上游 OpenAI 兼容端点。
- * 解决浏览器对各家 CN API 的 CORS，并**流式透传**（Kimi 老代理是缓冲的、不流式）。
- * key 走客户端 BYOK：OpenAI SDK 把 `Authorization: Bearer <key>` 发到本代理、原样转发。
+ * 通用 LLM 代理：`/api/llm/<provider>/<subpath>` → 上游 OpenAI 兼容端点。
+ * 单文件 + vercel.json 重写（同 kimi/apimart 模式，catch-all 在本项目不被识别）。
+ * 解决浏览器对各家 CN API 的 CORS，并**流式透传**。key 走客户端 BYOK（Authorization 原样转发）。
  *
- * 新增一家：在 UPSTREAM 加一行 `<provider>: '<openai兼容 baseURL>'`。
+ * 新增一家：UPSTREAM 加一行 `<provider>: '<openai兼容 baseURL>'`。
  */
 const UPSTREAM: Record<string, string> = {
   google: 'https://generativelanguage.googleapis.com/v1beta/openai',
@@ -17,10 +17,11 @@ const UPSTREAM: Record<string, string> = {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
-  const slug = req.query.path
-  const segments = Array.isArray(slug) ? slug : slug ? [slug] : []
-  const provider = segments[0] ?? ''
-  const subpath = segments.slice(1).join('/')
+  const url = new URL(req.url || '', `http://${req.headers.host}`)
+  const rest = url.pathname.replace(/^\/api\/llm\//, '') // e.g. "google/chat/completions"
+  const slash = rest.indexOf('/')
+  const provider = slash === -1 ? rest : rest.slice(0, slash)
+  const subpath = slash === -1 ? '' : rest.slice(slash + 1)
 
   const base = UPSTREAM[provider]
   if (!base) {
@@ -28,7 +29,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     return
   }
 
-  const url = new URL(req.url || '', `http://${req.headers.host}`)
   const target = `${base}/${subpath}${url.search}`
 
   try {
@@ -43,8 +43,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     })
 
     res.status(upstream.status)
-    const ct = upstream.headers.get('content-type') || 'application/json'
-    res.setHeader('Content-Type', ct)
+    res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json')
     res.setHeader('Cache-Control', 'no-store')
 
     if (!upstream.body) {

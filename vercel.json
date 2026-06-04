@@ -2,6 +2,7 @@
   "rewrites": [
     { "source": "/api/kimi/(.*)", "destination": "/api/kimi" },
     { "source": "/api/apimart/(.*)", "destination": "/api/apimart" },
+    { "source": "/api/llm/(.*)", "destination": "/api/llm" },
     {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
