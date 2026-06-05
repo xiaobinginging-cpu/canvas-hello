@@ -2,7 +2,12 @@ import { create } from 'zustand'
 import { nanoid } from 'nanoid'
 import * as github from '../lib/github.ts'
 import { streamChat } from '../lib/chat.ts'
-import { CHAT_AGENTS, DEFAULT_CHAT_AGENT_ID, getChatAgent } from '../lib/chatProviders.ts'
+import {
+  CHAT_AGENTS,
+  DEFAULT_CHAT_AGENT_ID,
+  getChatAgent,
+  isVisionModel,
+} from '../lib/chatProviders.ts'
 import type { ChatImageRef, ChatMessage, ChatProvider } from '../types/chat.ts'
 import type { ChatContent } from '../lib/chat.ts'
 
@@ -143,12 +148,13 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     const model = agent.models[0]?.value ?? ''
     writeLS(LS_AGENT, id)
     writeLS(LS_MODEL, model)
-    set({ agentId: id, model })
+    // 切到非视觉模型则清掉待发图片，避免发出去 400。
+    set((s) => ({ agentId: id, model, attachments: isVisionModel(id, model) ? s.attachments : [] }))
   },
 
   setModel: (m) => {
     writeLS(LS_MODEL, m)
-    set({ model: m })
+    set((s) => ({ model: m, attachments: isVisionModel(s.agentId, m) ? s.attachments : [] }))
   },
 
   loadHistory: async () => {

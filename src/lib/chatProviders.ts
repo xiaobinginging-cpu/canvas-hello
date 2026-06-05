@@ -12,7 +12,8 @@ export interface ChatAgent {
   id: ChatProvider
   label: string
   keyProvider: ApiKeyProvider
-  models: { value: string; label: string }[]
+  /** `vision: true` 才支持发图片（多模态）；非视觉模型收到 image_url 会 400。 */
+  models: { value: string; label: string; vision?: boolean }[]
 }
 
 export const CHAT_AGENTS: readonly ChatAgent[] = [
@@ -21,8 +22,8 @@ export const CHAT_AGENTS: readonly ChatAgent[] = [
     label: 'Gemini',
     keyProvider: 'google',
     models: [
-      { value: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
-      { value: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro' },
+      { value: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash', vision: true },
+      { value: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro', vision: true },
     ],
   },
   {
@@ -46,7 +47,7 @@ export const CHAT_AGENTS: readonly ChatAgent[] = [
     keyProvider: 'glm',
     models: [
       { value: 'GLM-5.1', label: 'GLM-5.1' },
-      { value: 'GLM-5V-Turbo', label: 'GLM-5V Turbo' },
+      { value: 'GLM-5V-Turbo', label: 'GLM-5V Turbo', vision: true },
     ],
   },
   {
@@ -54,9 +55,9 @@ export const CHAT_AGENTS: readonly ChatAgent[] = [
     label: 'Qwen',
     keyProvider: 'qwen',
     models: [
-      // DashScope API id 小写；旗舰 Qwen3.7-Max → qwen3.7-max（qwen-max-latest 是老别名、key 未授权 → 403）
+      // qwen3.7-max = 全能/文本（不吃图）；qwen3.7-plus = 视觉-语言多模态（发图用这个）
       { value: 'qwen3.7-max', label: 'Qwen3.7 Max' },
-      { value: 'qwen-plus-latest', label: 'Qwen Plus' },
+      { value: 'qwen3.7-plus', label: 'Qwen3.7 Plus（视觉）', vision: true },
     ],
   },
   {
@@ -66,6 +67,11 @@ export const CHAT_AGENTS: readonly ChatAgent[] = [
     models: [{ value: 'mimo-v2.5-pro', label: 'MiMo v2.5 Pro' }],
   },
 ] as const
+
+/** 当前 agent+model 是否支持发图片（多模态）。 */
+export function isVisionModel(agentId: ChatProvider, model: string): boolean {
+  return getChatAgent(agentId)?.models.find((m) => m.value === model)?.vision === true
+}
 
 export const DEFAULT_CHAT_AGENT_ID: ChatProvider = 'google'
 

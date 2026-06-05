@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ChevronRight, ImagePlus, Send, Square, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { hasApiKey } from '../../lib/apiKeys.ts'
-import { getChatAgent } from '../../lib/chatProviders.ts'
+import { getChatAgent, isVisionModel } from '../../lib/chatProviders.ts'
 import * as github from '../../lib/github.ts'
 import { CHAT_AGENTS, useChatStore } from '../../store/useChatStore.ts'
 import { useEffectiveUserLabel } from '../../hooks/useEffectiveUserLabel.ts'
@@ -105,6 +105,7 @@ export default function ChatPanel() {
   const agent = getChatAgent(agentId)
   const keyOk = agent ? hasApiKey(agent.keyProvider) : false
   const sending = status === 'sending'
+  const visionOk = isVisionModel(agentId, model)
 
   const canSend = (draft.trim() !== '' || attachments.length > 0) && !sending
 
@@ -263,9 +264,10 @@ export default function ChatPanel() {
         <div className="flex items-end gap-2 rounded-lg border border-neutral-300 bg-white px-2 py-1.5">
           <button
             type="button"
-            title="加图片"
+            title={visionOk ? '加图片' : '当前模型不支持图片，换视觉模型（如 Gemini / Qwen3.7 Plus / GLM-5V）'}
+            disabled={!visionOk}
             onClick={() => fileRef.current?.click()}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <ImagePlus size={16} strokeWidth={2} aria-hidden />
           </button>
