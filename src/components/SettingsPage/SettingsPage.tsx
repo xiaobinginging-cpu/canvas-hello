@@ -188,7 +188,7 @@ export default function SettingsPage() {
   const hasDn = Boolean(dnStored)
 
   return (
-    <div className="min-h-svh bg-[#FAF8F5] font-mono text-neutral-900">
+    <div className="flex h-svh flex-col overflow-hidden bg-[#FAF8F5] font-mono text-neutral-900">
       <header className="flex shrink-0 items-center justify-between border-b border-[#d4c8c9]/80 bg-[#FAF8F5] px-8 py-5">
         <Link to="/" className="flex shrink-0 items-center gap-3 text-sm text-neutral-600 hover:text-neutral-900">
           <span aria-hidden>←</span>
@@ -197,7 +197,7 @@ export default function SettingsPage() {
         <h1 className="text-sm font-medium tracking-tight text-neutral-800">API 密钥</h1>
       </header>
 
-      <main className="mx-auto max-w-lg px-6 py-12 text-left">
+      <main className="mx-auto min-h-0 w-full max-w-lg flex-1 overflow-y-auto px-6 py-12 text-left">
         <section className="mb-12 flex flex-col gap-2">
           <label className="text-xs uppercase tracking-wide text-neutral-500">显示名称</label>
           <p className="text-xs leading-relaxed text-neutral-500">
