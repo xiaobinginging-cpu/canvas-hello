@@ -21,24 +21,23 @@ function ChatImage({ imageRef }: { imageRef: ChatImageRef }) {
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
-    if (cached) return
-    let revoked = false
-    let objectUrl: string | null = null
+    // 已有缓存（刚发的 dataUrl 或别处已拉过）就不重复拉。读 store 而非靠 cached 依赖，
+    // 避免 register 后 cached 变化触发 cleanup 把刚建的 objectURL revoke 掉（刷新后图裂的根因）。
+    if (useChatStore.getState().chatImageUrls.get(imageRef.src)) return
+    let cancelled = false
     void (async () => {
       try {
         const blob = await github.fetchChatAsset(filenameFromSrc(imageRef.src))
-        if (revoked) return
-        objectUrl = URL.createObjectURL(blob)
-        register(imageRef.src, objectUrl)
+        if (cancelled) return
+        register(imageRef.src, URL.createObjectURL(blob))
       } catch {
-        if (!revoked) setFailed(true)
+        if (!cancelled) setFailed(true)
       }
     })()
     return () => {
-      revoked = true
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
+      cancelled = true
     }
-  }, [imageRef.src, cached, register])
+  }, [imageRef.src, register])
 
   if (failed) {
     return <span className="text-[10px] text-neutral-400">图片加载失败</span>

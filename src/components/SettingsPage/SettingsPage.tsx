@@ -194,10 +194,11 @@ export default function SettingsPage() {
           <span aria-hidden>←</span>
           <Logo variant="solid" size={32} />
         </Link>
-        <h1 className="text-sm font-medium tracking-tight text-neutral-800">API 密钥</h1>
+        <span className="text-sm font-medium tracking-tight text-neutral-800">API 密钥</span>
       </header>
 
-      <main className="mx-auto min-h-0 w-full max-w-lg flex-1 overflow-y-auto px-6 py-12 text-left">
+      <main className="min-h-0 w-full flex-1 overflow-y-auto">
+       <div className="mx-auto max-w-lg px-6 py-12 text-left">
         <section className="mb-12 flex flex-col gap-2">
           <label className="text-xs uppercase tracking-wide text-neutral-500">显示名称</label>
           <p className="text-xs leading-relaxed text-neutral-500">
@@ -332,6 +333,7 @@ export default function SettingsPage() {
             )
           })}
         </div>
+       </div>
       </main>
     </div>
   )
