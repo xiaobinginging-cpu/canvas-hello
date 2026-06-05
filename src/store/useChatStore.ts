@@ -8,8 +8,19 @@ import {
   getChatAgent,
   isVisionModel,
 } from '../lib/chatProviders.ts'
-import type { ChatImageRef, ChatMessage, ChatProvider } from '../types/chat.ts'
+import { useProjectStore } from './useStore.ts'
+import type { ChatImageRef, ChatMessage, ChatProvider, ChatSession } from '../types/chat.ts'
 import type { ChatContent } from '../lib/chat.ts'
+
+function currentProjectId(): string | null {
+  return useProjectStore.getState().currentProjectId
+}
+
+function titleFrom(text: string): string {
+  const t = text.trim()
+  if (!t) return '新对话'
+  return t.length > 24 ? `${t.slice(0, 24)}…` : t
+}
 
 function imageExtFromFile(file: File): string {
   const t = (file.type || '').toLowerCase()
@@ -129,12 +140,18 @@ interface ChatStoreState {
   /** 屏幕坐标（fixed，非画布世界坐标）；null = 组件用默认右下角。 */
   spriteX: number | null
   spriteY: number | null
-  messages: ChatMessage[]
+
+  /** 已加载会话的 project（按项目分会话）。 */
+  loadedProjectId: string | null
+  sessions: ChatSession[]
+  currentSessionId: string | null
+  /** 历史会话列表浮层开关。 */
+  showHistory: boolean
+
   agentId: ChatProvider
   model: string
   status: 'idle' | 'sending'
   error: string | null
-  loaded: boolean
   loading: boolean
 
   /** 输入框待发的图片附件（多模态）。 */
@@ -147,10 +164,13 @@ interface ChatStoreState {
   setSpritePos: (x: number, y: number) => void
   setAgent: (id: ChatProvider) => void
   setModel: (m: string) => void
-  loadHistory: () => Promise<void>
+  loadForProject: (projectId: string) => Promise<void>
+  newSession: () => void
+  switchSession: (id: string) => void
+  deleteSession: (id: string) => Promise<void>
+  toggleHistory: (v?: boolean) => void
   send: (text: string) => Promise<void>
   cancel: () => void
-  clearMessages: () => Promise<void>
   addAttachments: (files: File[]) => Promise<void>
   removeAttachment: (id: string) => void
   registerChatImageUrl: (src: string, url: string) => void
@@ -162,21 +182,24 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   panelOpen: false,
   spriteX: readNum(LS_SPRITE_X),
   spriteY: readNum(LS_SPRITE_Y),
-  messages: [],
+  loadedProjectId: null,
+  sessions: [],
+  currentSessionId: null,
+  showHistory: false,
   agentId: initialAgent(),
   model: initialModel(initialAgent()),
   status: 'idle',
   error: null,
-  loaded: false,
   loading: false,
   attachments: [],
   chatImageUrls: new Map(),
 
   openPanel: () => {
     set({ panelOpen: true })
-    if (!get().loaded && !get().loading) void get().loadHistory()
+    const pid = currentProjectId()
+    if (pid) void get().loadForProject(pid)
   },
-  closePanel: () => set({ panelOpen: false }),
+  closePanel: () => set({ panelOpen: false, showHistory: false }),
 
   setSpritePos: (x, y) => {
     writeLS(LS_SPRITE_X, String(x))
@@ -199,24 +222,58 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     set((s) => ({ model: m, attachments: isVisionModel(s.agentId, m) ? s.attachments : [] }))
   },
 
-  loadHistory: async () => {
-    set({ loading: true })
+  loadForProject: async (projectId) => {
+    if (get().loadedProjectId === projectId && !get().loading) return
+    set({ loading: true, loadedProjectId: projectId, sessions: [], currentSessionId: null, error: null })
     try {
-      const data = await github.loadChat()
-      set({ messages: data.messages, loaded: true, loading: false })
+      const data = await github.loadChat(projectId)
+      const sessions = [...data.sessions].sort((a, b) => b.updatedAt - a.updatedAt)
+      set({ sessions, currentSessionId: sessions[0]?.id ?? null, loading: false })
     } catch (e) {
-      console.warn('[chat] loadHistory failed', e)
-      set({ loaded: true, loading: false })
+      console.warn('[chat] loadForProject failed', e)
+      set({ loading: false })
     }
   },
+
+  newSession: () =>
+    set({ currentSessionId: null, showHistory: false, attachments: [], error: null }),
+
+  switchSession: (id) => set({ currentSessionId: id, showHistory: false, error: null }),
+
+  deleteSession: async (id) => {
+    const projectId = currentProjectId()
+    if (!projectId) return
+    const sessions = get().sessions.filter((s) => s.id !== id)
+    const currentSessionId =
+      get().currentSessionId === id ? (sessions[0]?.id ?? null) : get().currentSessionId
+    set({ sessions, currentSessionId })
+    try {
+      await github.saveChat(projectId, { sessions, updatedAt: Date.now() })
+    } catch (e) {
+      console.warn('[chat] deleteSession save failed', e)
+    }
+  },
+
+  toggleHistory: (v) => set((s) => ({ showHistory: v ?? !s.showHistory })),
 
   send: async (text) => {
     const trimmed = text.trim()
     const atts = get().attachments
     if ((!trimmed && atts.length === 0) || get().status === 'sending') return
+    const projectId = currentProjectId()
+    if (!projectId) return
 
     const now = Date.now()
     const { agentId, model } = get()
+
+    // 确保有当前会话（无则新建，不预建空会话）
+    let sid = get().currentSessionId
+    let sessions = get().sessions
+    if (!sid || !sessions.some((s) => s.id === sid)) {
+      sid = nanoid()
+      sessions = [{ id: sid, title: '', messages: [], createdAt: now, updatedAt: now }, ...sessions]
+    }
+    const session = sessions.find((s) => s.id === sid)!
 
     // 当前附件 → 图 ref + 上传资产 + 立即显示缓存
     const imageRefs: ChatImageRef[] = []
@@ -247,9 +304,9 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       createdAt: now + 1,
     }
 
-    // 历史轮：视觉模型才带历史图（用公开 URL，免重编码；文本模型带图会 400 故纯文本）。
+    // 历史轮取当前会话已有消息；视觉模型才带历史图（公开 URL，文本模型带图会 400 故纯文本）
     const visionOk = isVisionModel(agentId, model)
-    const past: { role: 'user' | 'assistant'; content: ChatContent }[] = get().messages.map((m) => {
+    const past: { role: 'user' | 'assistant'; content: ChatContent }[] = session.messages.map((m) => {
       if (visionOk && m.role === 'user' && m.images && m.images.length) {
         return {
           role: m.role,
@@ -272,13 +329,35 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       : trimmed
     const turns = [...past, { role: 'user' as const, content: currentContent }]
 
+    const nextTitle = session.title || titleFrom(trimmed || '[图片]')
+    const withMsgs = sessions.map((s) =>
+      s.id === sid
+        ? { ...s, title: nextTitle, messages: [...s.messages, userMsg, assistantMsg], updatedAt: now }
+        : s,
+    )
+
     set({
-      messages: [...get().messages, userMsg, assistantMsg],
+      sessions: withMsgs,
+      currentSessionId: sid,
       status: 'sending',
       error: null,
       attachments: [],
       chatImageUrls: nextImageUrls,
     })
+
+    const patchAssistant = (fn: (m: ChatMessage) => ChatMessage) =>
+      set((st) => ({
+        sessions: st.sessions.map((s) =>
+          s.id === sid
+            ? { ...s, messages: s.messages.map((m) => (m.id === assistantId ? fn(m) : m)) }
+            : s,
+        ),
+      }))
+
+    const persist = () =>
+      void github
+        .saveChat(projectId, { sessions: get().sessions, updatedAt: Date.now() }, newAssets)
+        .catch((e) => console.warn('[chat] saveChat failed', e))
 
     abortController = new AbortController()
     try {
@@ -287,33 +366,18 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         model,
         messages: turns,
         signal: abortController.signal,
-        onDelta: (delta) => {
-          set((s) => ({
-            messages: s.messages.map((m) =>
-              m.id === assistantId ? { ...m, content: m.content + delta } : m,
-            ),
-          }))
-        },
+        onDelta: (delta) => patchAssistant((m) => ({ ...m, content: m.content + delta })),
       })
       set({ status: 'idle' })
-      void github.saveChat({ messages: get().messages, updatedAt: Date.now() }, newAssets).catch((e) => {
-        console.warn('[chat] saveChat failed', e)
-      })
+      persist()
     } catch (e) {
       const aborted = e instanceof Error && e.name === 'AbortError'
       const msg = aborted ? '已停止' : e instanceof Error ? e.message : '出错了'
-      set((s) => ({
-        status: 'idle',
-        error: aborted ? null : msg,
-        messages: s.messages.map((m) =>
-          m.id === assistantId && m.content === ''
-            ? { ...m, content: aborted ? '（已停止）' : `⚠ ${msg}` }
-            : m,
-        ),
-      }))
-      if (!aborted) {
-        void github.saveChat({ messages: get().messages, updatedAt: Date.now() }, newAssets).catch(() => {})
-      }
+      patchAssistant((m) =>
+        m.content === '' ? { ...m, content: aborted ? '（已停止）' : `⚠ ${msg}` } : m,
+      )
+      set({ status: 'idle', error: aborted ? null : msg })
+      if (!aborted) persist()
     } finally {
       abortController = null
     }
@@ -323,17 +387,6 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     abortController?.abort()
     abortController = null
     set({ status: 'idle' })
-  },
-
-  clearMessages: async () => {
-    abortController?.abort()
-    abortController = null
-    set({ messages: [], status: 'idle', error: null, attachments: [] })
-    try {
-      await github.saveChat({ messages: [], updatedAt: Date.now() })
-    } catch (e) {
-      console.warn('[chat] clear saveChat failed', e)
-    }
   },
 
   addAttachments: async (files) => {

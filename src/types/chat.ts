@@ -28,25 +28,61 @@ export interface ChatMessage {
   createdAt: number
 }
 
-export interface ChatData {
+/** 一条会话（多会话历史的基本单位）。 */
+export interface ChatSession {
+  id: string
+  /** 标题；默认取首条用户消息（截断）。 */
+  title: string
   messages: ChatMessage[]
+  createdAt: number
+  updatedAt: number
+}
+
+/** 每个 project 的聊天数据（存 `_chat/{projectId}.json`，多设备同步）。 */
+export interface ChatData {
+  sessions: ChatSession[]
   /** 最后更新时间戳（ms）；多设备 last-write-wins 参考。 */
   updatedAt: number
 }
 
-export const EMPTY_CHAT: ChatData = { messages: [], updatedAt: 0 }
+export const EMPTY_CHAT: ChatData = { sessions: [], updatedAt: 0 }
 
-/** 容错归一化（旧 / 部分 chat.json）。 */
-export function normalizeChatData(raw: unknown): ChatData {
-  const o = (raw ?? {}) as Partial<ChatData>
-  const messages = Array.isArray(o.messages)
-    ? o.messages.filter(
+function normalizeMessages(raw: unknown): ChatMessage[] {
+  return Array.isArray(raw)
+    ? raw.filter(
         (m): m is ChatMessage =>
           !!m && typeof (m as ChatMessage).content === 'string' && !!(m as ChatMessage).role,
       )
     : []
-  return {
-    messages,
-    updatedAt: typeof o.updatedAt === 'number' ? o.updatedAt : 0,
+}
+
+/** 容错归一化 + 迁移旧格式（单条 `{ messages }` → 包成一个 session）。 */
+export function normalizeChatData(raw: unknown): ChatData {
+  const o = (raw ?? {}) as { sessions?: unknown; messages?: unknown; updatedAt?: unknown }
+  const updatedAt = typeof o.updatedAt === 'number' ? o.updatedAt : 0
+
+  if (Array.isArray(o.sessions)) {
+    const sessions: ChatSession[] = o.sessions
+      .filter((s): s is ChatSession => !!s && typeof (s as ChatSession).id === 'string')
+      .map((s) => ({
+        id: s.id,
+        title: typeof s.title === 'string' ? s.title : '',
+        messages: normalizeMessages(s.messages),
+        createdAt: typeof s.createdAt === 'number' ? s.createdAt : 0,
+        updatedAt: typeof s.updatedAt === 'number' ? s.updatedAt : 0,
+      }))
+    return { sessions, updatedAt }
   }
+
+  // 旧格式迁移：{ messages } → 一个 session
+  const legacy = normalizeMessages(o.messages)
+  if (legacy.length) {
+    return {
+      sessions: [
+        { id: 'migrated', title: '', messages: legacy, createdAt: updatedAt, updatedAt },
+      ],
+      updatedAt,
+    }
+  }
+  return { sessions: [], updatedAt }
 }

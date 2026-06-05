@@ -1802,15 +1802,20 @@ export function getChatAssetUrl(filename: string): string {
   return githubRawToJsdelivr(raw)
 }
 
-/** Loads `_chat/chat.json`. Missing → empty; transient errors throw. 同 loadLibrary：不走 CDN。 */
-export async function loadChat(): Promise<ChatData> {
+/** 每个 project 的会话文件 `_chat/{projectId}.json`（按项目分会话）。 */
+function chatJsonName(projectId: string): string {
+  return `${projectId}.json`
+}
+
+/** Loads `_chat/{projectId}.json`. Missing → empty; transient errors throw. 同 loadLibrary：不走 CDN。 */
+export async function loadChat(projectId: string): Promise<ChatData> {
   if (r2PublicReadConfigured()) {
-    const { found, text } = await r2FetchTextStrict(chatKey('chat.json'))
+    const { found, text } = await r2FetchTextStrict(chatKey(chatJsonName(projectId)))
     if (!found || !text) return { ...EMPTY_CHAT }
     try {
       return normalizeChatData(JSON.parse(text))
     } catch {
-      throw new Error('[r2] chat.json invalid JSON')
+      throw new Error('[r2] chat json invalid JSON')
     }
   }
 
@@ -1819,7 +1824,12 @@ export async function loadChat(): Promise<ChatData> {
   const owner = await getOwnerLogin(octokit)
   const branch = await getRepoBranch(octokit, owner)
   try {
-    const json = await readRepoTextFileViaContentsApi(octokit, owner, branch, `${CHAT_PREFIX}/chat.json`)
+    const json = await readRepoTextFileViaContentsApi(
+      octokit,
+      owner,
+      branch,
+      `${CHAT_PREFIX}/${chatJsonName(projectId)}`,
+    )
     return normalizeChatData(JSON.parse(json))
   } catch (e) {
     if (is401(e)) handle401()
@@ -1829,6 +1839,7 @@ export async function loadChat(): Promise<ChatData> {
 }
 
 async function flushChatToGitHub(
+  projectId: string,
   data: ChatData,
   newAssets: { name: string; blob: Blob }[],
 ): Promise<void> {
@@ -1848,13 +1859,14 @@ async function flushChatToGitHub(
   }
 
   const json = `${JSON.stringify(data, null, 2)}\n`
-  const path = `${CHAT_PREFIX}/chat.json`
+  const path = `${CHAT_PREFIX}/${chatJsonName(projectId)}`
   const sha = await getShaIfExists(octokit, owner, path, branch)
   await putTextFile(octokit, owner, branch, path, json, msg, sha)
 }
 
-/** Writes `_chat/chat.json` + optional image assets. Prefers R2, falls back to GitHub (同 saveLibrary)。 */
+/** Writes `_chat/{projectId}.json` + optional image assets. Prefers R2, falls back to GitHub。 */
 export async function saveChat(
+  projectId: string,
   data: ChatData,
   newAssets: { name: string; blob: Blob }[] = [],
 ): Promise<void> {
@@ -1865,13 +1877,16 @@ export async function saveChat(
         if (!asset.blob || asset.blob.size === 0) continue
         await r2UploadViaApi(chatKey('assets', asset.name.replace(/^\/+/, '')), asset.blob)
       }
-      await r2UploadViaApi(chatKey('chat.json'), new Blob([json], { type: 'application/json' }))
+      await r2UploadViaApi(
+        chatKey(chatJsonName(projectId)),
+        new Blob([json], { type: 'application/json' }),
+      )
       return
     } catch (e) {
       console.warn('[r2/chat] save failed, falling back to GitHub', e)
     }
   }
-  await flushChatToGitHub(data, newAssets)
+  await flushChatToGitHub(projectId, data, newAssets)
 }
 
 /** Lazy-loads one chat image under `_chat/assets/{filename}` as a Blob（同 fetchLibraryAsset）。 */

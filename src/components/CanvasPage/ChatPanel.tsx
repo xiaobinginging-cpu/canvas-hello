@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
-import { ChevronRight, ImagePlus, Send, Square, Trash2 } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ChevronRight, Clock, ImagePlus, Send, Square, SquarePen, Trash2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Link } from 'react-router-dom'
 import { hasApiKey } from '../../lib/apiKeys.ts'
 import { getChatAgent, isVisionModel } from '../../lib/chatProviders.ts'
 import * as github from '../../lib/github.ts'
+import { formatRelativeTimeZh } from '../../lib/formatRelativeTime.ts'
 import { CHAT_AGENTS, useChatStore } from '../../store/useChatStore.ts'
+import { useProjectStore } from '../../store/useStore.ts'
 import { useEffectiveUserLabel } from '../../hooks/useEffectiveUserLabel.ts'
 import type { ChatImageRef } from '../../types/chat.ts'
 
@@ -77,7 +79,9 @@ function MiniSprite({ size }: { size: number }) {
 export default function ChatPanel() {
   const panelOpen = useChatStore((s) => s.panelOpen)
   const closePanel = useChatStore((s) => s.closePanel)
-  const messages = useChatStore((s) => s.messages)
+  const sessions = useChatStore((s) => s.sessions)
+  const currentSessionId = useChatStore((s) => s.currentSessionId)
+  const showHistory = useChatStore((s) => s.showHistory)
   const agentId = useChatStore((s) => s.agentId)
   const model = useChatStore((s) => s.model)
   const status = useChatStore((s) => s.status)
@@ -87,21 +91,38 @@ export default function ChatPanel() {
   const setModel = useChatStore((s) => s.setModel)
   const send = useChatStore((s) => s.send)
   const cancel = useChatStore((s) => s.cancel)
-  const clearMessages = useChatStore((s) => s.clearMessages)
+  const newSession = useChatStore((s) => s.newSession)
+  const switchSession = useChatStore((s) => s.switchSession)
+  const deleteSession = useChatStore((s) => s.deleteSession)
+  const toggleHistory = useChatStore((s) => s.toggleHistory)
+  const loadForProject = useChatStore((s) => s.loadForProject)
   const attachments = useChatStore((s) => s.attachments)
   const addAttachments = useChatStore((s) => s.addAttachments)
   const removeAttachment = useChatStore((s) => s.removeAttachment)
+  const projectId = useProjectStore((s) => s.currentProjectId)
 
   const userLabel = useEffectiveUserLabel()
   const [draft, setDraft] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
+  const messages = useMemo(
+    () => sessions.find((s) => s.id === currentSessionId)?.messages ?? [],
+    [sessions, currentSessionId],
+  )
+
+  // 切换项目时重载该项目的会话。
+  useEffect(() => {
+    if (panelOpen && projectId) void loadForProject(projectId)
+  }, [panelOpen, projectId, loadForProject])
+
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages, panelOpen])
 
   if (!panelOpen) return null
+
+  const sortedSessions = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt)
 
   const agent = getChatAgent(agentId)
   const keyOk = agent ? hasApiKey(agent.keyProvider) : false
@@ -150,11 +171,22 @@ export default function ChatPanel() {
         </div>
         <button
           type="button"
-          title="清空对话"
-          onClick={() => void clearMessages()}
+          title="历史对话"
+          aria-pressed={showHistory}
+          onClick={() => toggleHistory()}
+          className={`rounded p-1.5 hover:bg-neutral-200/70 hover:text-neutral-800 ${
+            showHistory ? 'text-neutral-900' : 'text-neutral-500'
+          }`}
+        >
+          <Clock size={16} strokeWidth={2} aria-hidden />
+        </button>
+        <button
+          type="button"
+          title="新对话"
+          onClick={() => newSession()}
           className="rounded p-1.5 text-neutral-500 hover:bg-neutral-200/70 hover:text-neutral-800"
         >
-          <Trash2 size={15} strokeWidth={2} aria-hidden />
+          <SquarePen size={16} strokeWidth={2} aria-hidden />
         </button>
         <button
           type="button"
@@ -165,6 +197,46 @@ export default function ChatPanel() {
           <ChevronRight size={18} strokeWidth={2} aria-hidden />
         </button>
       </div>
+
+      {showHistory ? (
+        <div className="shrink-0 border-b border-neutral-200 bg-white">
+          <div className="max-h-64 overflow-y-auto py-1">
+            {sortedSessions.length === 0 ? (
+              <p className="px-4 py-3 text-xs text-neutral-400">还没有历史对话</p>
+            ) : (
+              sortedSessions.map((s) => (
+                <div
+                  key={s.id}
+                  className={`group flex items-center gap-2 px-3 py-2 text-xs hover:bg-neutral-100 ${
+                    s.id === currentSessionId ? 'bg-neutral-100' : ''
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => switchSession(s.id)}
+                    className="flex min-w-0 flex-1 flex-col items-start text-left"
+                  >
+                    <span className="line-clamp-1 break-all text-neutral-900">
+                      {s.title || '新对话'}
+                    </span>
+                    <span className="text-[10px] text-neutral-400">
+                      {formatRelativeTimeZh(s.updatedAt)} · {s.messages.length} 条
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    title="删除"
+                    onClick={() => void deleteSession(s.id)}
+                    className="shrink-0 rounded p-1 text-neutral-400 opacity-0 hover:bg-neutral-200 hover:text-neutral-700 group-hover:opacity-100"
+                  >
+                    <Trash2 size={13} strokeWidth={2} aria-hidden />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      ) : null}
 
       {!keyOk ? (
         <Link
