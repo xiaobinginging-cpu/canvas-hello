@@ -31,8 +31,11 @@ export default function ChatSprite() {
 
   if (panelOpen) return null
 
-  const x = spriteX ?? fallback?.x ?? 24
-  const y = spriteY ?? fallback?.y ?? 24
+  // 夹回当前可视区——存的位置可能是别的分辨率/拖到屏外留下的，否则小精灵会"消失"在屏幕外。
+  const maxX = Math.max(8, window.innerWidth - SIZE - 8)
+  const maxY = Math.max(8, window.innerHeight - SIZE - 8)
+  const x = Math.min(maxX, Math.max(8, spriteX ?? fallback?.x ?? 24))
+  const y = Math.min(maxY, Math.max(8, spriteY ?? fallback?.y ?? 24))
 
   function onPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
     e.preventDefault()

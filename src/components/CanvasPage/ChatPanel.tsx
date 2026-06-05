@@ -48,7 +48,8 @@ function ChatImage({ imageRef }: { imageRef: ChatImageRef }) {
     <img
       src={cached}
       alt={imageRef.name ?? ''}
-      className="max-h-40 max-w-full rounded border border-neutral-200 object-contain"
+      className="rounded border border-neutral-200 object-contain"
+      style={{ maxHeight: 160, maxWidth: 200 }}
     />
   )
 }
