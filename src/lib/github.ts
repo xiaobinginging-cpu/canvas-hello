@@ -23,6 +23,18 @@ const LIBRARY_PREFIX = '_library'
 /** Chat 浮动小精灵会话同步根目录（多设备共享，同 `_library` 模式）。 */
 const CHAT_PREFIX = '_chat'
 
+// ─── 读缓存（切页面提速）─────────────────────────────────────────────────────
+// 列表 / 缩略图 / 素材库读多写少：缓存避免每次切页面都重拉。本地写操作即时失效，
+// 最坏只是缩略图/列表稍旧（不缓存会丢数据的写路径）。跨设备改动需刷新（同既有同步模型）。
+let cacheProjectsList: ProjectMeta[] | null = null
+const cacheProjectCanvas = new Map<string, CanvasData>()
+let cacheLibrary: LibraryData | null = null
+
+function invalidateProjectCaches(id?: string): void {
+  cacheProjectsList = null
+  if (id) cacheProjectCanvas.delete(id)
+}
+
 // ─── Cloudflare R2 (writes via Vercel `/api/r2-*`; secrets stay server-side) ─
 
 function r2PublicReadConfigured(): boolean {
@@ -353,9 +365,17 @@ export async function setToken(token: string): Promise<void> {
   }
 
   cachedRepoBranch = null
+  clearReadCaches()
   await getOwnerLogin(createOctokit(trimmed))
   void syncPendingFromStorage()
   console.log('[github/auth] PAT saved (validated via /user)')
+}
+
+/** 切账号 / 登出时清读缓存，避免串账号数据。 */
+function clearReadCaches(): void {
+  cacheProjectsList = null
+  cacheProjectCanvas.clear()
+  cacheLibrary = null
 }
 
 export function clearToken(): void {
@@ -366,6 +386,7 @@ export function clearToken(): void {
     /* ignore */
   }
   cachedRepoBranch = null
+  clearReadCaches()
 }
 
 export function isAuthenticated(): boolean {
@@ -860,6 +881,13 @@ async function listProjectsViaContentsListing(
 
 /** Lists `project-{id}/meta.json` across the repo; sorted by `updatedAt` descending. */
 export async function listProjects(): Promise<ProjectMeta[]> {
+  if (cacheProjectsList) return cacheProjectsList
+  const r = await listProjectsUncached()
+  cacheProjectsList = r
+  return r
+}
+
+async function listProjectsUncached(): Promise<ProjectMeta[]> {
   const octokit = await getAuthenticatedOctokit()
   if (r2PublicReadConfigured()) {
     try {
@@ -937,6 +965,14 @@ export async function loadProject(id: string): Promise<LoadedProject> {
  * Reads `project-{id}/canvas.json` only (lighter than {@link loadProject} for library thumbnails).
  */
 export async function fetchProjectCanvas(projectId: string): Promise<CanvasData> {
+  const c = cacheProjectCanvas.get(projectId)
+  if (c) return c
+  const r = await fetchProjectCanvasUncached(projectId)
+  cacheProjectCanvas.set(projectId, r)
+  return r
+}
+
+async function fetchProjectCanvasUncached(projectId: string): Promise<CanvasData> {
   const octokit = await getAuthenticatedOctokit()
   if (r2PublicReadConfigured()) {
     try {
@@ -1032,6 +1068,9 @@ export async function saveProject(
   canvas: CanvasData,
   newAssets?: { name: string; blob: Blob }[],
 ): Promise<void> {
+  invalidateProjectCaches(id)
+  // 该 project 缩略图来源就是它的 canvas——存了直接更新缓存，省下一次重拉。
+  cacheProjectCanvas.set(id, canvas)
   saveQueueDepth += 1
   console.log('[save/queue] queued, queueDepth=', saveQueueDepth)
 
@@ -1297,6 +1336,7 @@ if (typeof window !== 'undefined') {
 
 /** Deletes `project-{id}/` (all nested files). Commit per file (GitHub Contents API). */
 export async function deleteProject(id: string): Promise<void> {
+  invalidateProjectCaches(id)
   try {
     await deleteProjectImmediate(id)
   } catch (e) {
@@ -1546,6 +1586,13 @@ async function r2FetchTextStrict(key: string): Promise<{ found: boolean; text: s
 
 /** Loads `_library/library.json`. Missing file → empty library; transient errors throw. */
 export async function loadLibrary(): Promise<LibraryData> {
+  if (cacheLibrary) return cacheLibrary
+  const r = await loadLibraryUncached()
+  cacheLibrary = r
+  return r
+}
+
+async function loadLibraryUncached(): Promise<LibraryData> {
   if (r2PublicReadConfigured()) {
     const { found, text } = await r2FetchTextStrict(libraryKey('library.json'))
     if (!found || !text) return { ...EMPTY_LIBRARY }
@@ -1626,6 +1673,7 @@ export async function saveLibrary(
   data: LibraryData,
   newAssets: { name: string; blob: Blob }[] = [],
 ): Promise<void> {
+  cacheLibrary = data // 写的就是新真相，缓存直接更新，下次 loadLibrary 即时且正确
   if (r2PublicReadConfigured()) {
     try {
       await flushLibraryToR2(data, newAssets)
