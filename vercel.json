@@ -3,6 +3,7 @@
     { "source": "/api/kimi/(.*)", "destination": "/api/kimi" },
     { "source": "/api/apimart/(.*)", "destination": "/api/apimart" },
     { "source": "/api/llm/(.*)", "destination": "/api/llm" },
+    { "source": "/api/dashscope/(.*)", "destination": "/api/dashscope" },
     {
       "source": "/((?!api/).*)",
       "destination": "/index.html"

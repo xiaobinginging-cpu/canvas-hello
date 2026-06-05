@@ -6,7 +6,32 @@ import { hasApiKey, missingApiKeyMessage } from '../../lib/apiKeys.ts'
 import { runCanvasVideoGeneration } from '../../lib/canvasGeneration.ts'
 import { getGithubLogin, getRawAssetUrl } from '../../lib/github.ts'
 import { useProjectStore, type VideoGenRatio } from '../../store/useStore.ts'
-import type { APImartVideoModel, VideoQuality } from '../../types/video.ts'
+import {
+  videoProviderForModel,
+  type VideoModel,
+  type VideoProvider,
+  type VideoQuality,
+} from '../../types/video.ts'
+
+/** 视频模型全集（APImart 多模型 + 百炼直连 HappyHorse）。 */
+const VIDEO_MODEL_OPTIONS: { id: VideoModel; label: string; provider: VideoProvider }[] = [
+  ...APIMART_VIDEO_MODEL_OPTIONS.map((m) => ({
+    id: m.id as VideoModel,
+    label: m.label,
+    provider: 'apimart' as VideoProvider,
+  })),
+  { id: 'happyhorse-1.0-t2v', label: 'HappyHorse 1.0 · 百炼直连(千问 key)', provider: 'dashscope' },
+]
+
+const VIDEO_PROVIDER_LABEL: Record<VideoProvider, string> = {
+  apimart: 'APIMart',
+  dashscope: '百炼',
+}
+
+/** dashscope provider 用千问 key；apimart 用 apimart key。 */
+function videoKeyProvider(model: VideoModel): 'apimart' | 'qwen' {
+  return videoProviderForModel(model) === 'dashscope' ? 'qwen' : 'apimart'
+}
 import { GEN_PANEL_GENERATE_BTN_CLASS } from './genPanelStyles.ts'
 import ReferenceImagePicker from './ReferenceImagePicker.tsx'
 import ReferenceImageThumb from './ReferenceImageThumb.tsx'
@@ -34,19 +59,21 @@ const QUALITY_OPTIONS: { value: VideoQuality; label: string; title: string }[] =
   },
 ]
 
-function maxRefsForModel(model: APImartVideoModel): number {
+function maxRefsForModel(model: VideoModel): number {
+  if (videoProviderForModel(model) === 'dashscope') return 0 // 百炼 HappyHorse 是 T2V，无参考图
   return model === 'grok-imagine-1.0-video-apimart' || model === 'kling-v3' ? 7 : 9
 }
 
-function defaultDurationForModel(model: APImartVideoModel): number {
+function defaultDurationForModel(model: VideoModel): number {
   return model === 'grok-imagine-1.0-video-apimart' ? 6 : 5
 }
 
-function durationsForModel(model: APImartVideoModel): readonly number[] {
+function durationsForModel(model: VideoModel): readonly number[] {
   switch (model) {
     case 'grok-imagine-1.0-video-apimart':
       return GROK_DURATIONS
     case 'happyhorse-1.0':
+    case 'happyhorse-1.0-t2v':
     case 'kling-v3':
       return KLING_DURATIONS
     case 'doubao-seedance-2.0':
@@ -117,7 +144,10 @@ export default function VideoGenPanel({
   if (!videoGenPanelOpen) return null
 
   const promptHasContent = videoGenConfig.prompt.trim() !== ''
-  const apiKeyOk = hasApiKey('apimart')
+  const provider = videoProviderForModel(videoGenConfig.model)
+  const keyProvider = videoKeyProvider(videoGenConfig.model)
+  const apiKeyOk = hasApiKey(keyProvider)
+  const supportsRefs = provider === 'apimart'
   const maxRef = maxRefsForModel(videoGenConfig.model)
   const durationOptions = durationsForModel(videoGenConfig.model)
 
@@ -138,15 +168,12 @@ export default function VideoGenPanel({
     >
       <div className="flex flex-col gap-3 p-4">
         {!apiKeyOk ? (
-          <>
-            <Link
-              to="/settings"
-              className="block rounded-lg border border-[#c9b8bb] bg-[#faf6f7] px-3 py-2 text-xs text-neutral-800 underline decoration-[#5f7163]/50 decoration-2 underline-offset-2 hover:decoration-[#5f7163]"
-            >
-              {missingApiKeyMessage('apimart')}
-            </Link>
-            <p className="text-[11px] text-neutral-500">视频生成仅支持 APIMart。</p>
-          </>
+          <Link
+            to="/settings"
+            className="block rounded-lg border border-[#c9b8bb] bg-[#faf6f7] px-3 py-2 text-xs text-neutral-800 underline decoration-[#5f7163]/50 decoration-2 underline-offset-2 hover:decoration-[#5f7163]"
+          >
+            {missingApiKeyMessage(keyProvider)}
+          </Link>
         ) : null}
 
         {videoRefError ? (
@@ -155,29 +182,33 @@ export default function VideoGenPanel({
           </p>
         ) : null}
 
-        <div className="flex flex-wrap items-start gap-3">
-          <ReferenceImagePicker
-            canvasViewportRef={canvasViewportRef}
-            selectionTarget="video-gen"
-            allowLocalUpload={false}
-            onAddReferenceIds={(ids) => {
-              const next = clampRefs([
-                ...new Set([...videoGenConfig.referenceImageIds, ...ids]),
-              ])
-              updateVideoGenConfig({ referenceImageIds: next })
-            }}
-          />
-          {videoGenConfig.referenceImageIds.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] text-neutral-500">
-                {videoGenConfig.referenceImageIds.length}/{maxRef}
-              </span>
-              {videoGenConfig.referenceImageIds.map((rid) => (
-                <ReferenceImageThumb key={rid} id={rid} onRemove={() => removeRef(rid)} />
-              ))}
-            </div>
-          ) : null}
-        </div>
+        {supportsRefs ? (
+          <div className="flex flex-wrap items-start gap-3">
+            <ReferenceImagePicker
+              canvasViewportRef={canvasViewportRef}
+              selectionTarget="video-gen"
+              allowLocalUpload={false}
+              onAddReferenceIds={(ids) => {
+                const next = clampRefs([
+                  ...new Set([...videoGenConfig.referenceImageIds, ...ids]),
+                ])
+                updateVideoGenConfig({ referenceImageIds: next })
+              }}
+            />
+            {videoGenConfig.referenceImageIds.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10px] text-neutral-500">
+                  {videoGenConfig.referenceImageIds.length}/{maxRef}
+                </span>
+                {videoGenConfig.referenceImageIds.map((rid) => (
+                  <ReferenceImageThumb key={rid} id={rid} onRemove={() => removeRef(rid)} />
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <p className="text-[11px] text-neutral-500">HappyHorse（百炼）是文生视频，暂不支持参考图。</p>
+        )}
 
         <textarea
           className="min-h-[6.5rem] w-full resize-y rounded border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400"
@@ -247,9 +278,9 @@ export default function VideoGenPanel({
               <select
                 disabled
                 className="min-w-[120px] cursor-not-allowed rounded border border-neutral-200 bg-neutral-100 px-2 py-1.5 text-xs text-neutral-600"
-                value="apimart"
+                value={provider}
               >
-                <option value="apimart">APIMart</option>
+                <option value={provider}>{VIDEO_PROVIDER_LABEL[provider]}</option>
               </select>
             </label>
 
@@ -259,7 +290,7 @@ export default function VideoGenPanel({
                 className="min-w-[min(100%,160px)] max-w-full flex-1 rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900 sm:min-w-[160px]"
                 value={videoGenConfig.model}
                 onChange={(e) => {
-                  const next = e.target.value as APImartVideoModel
+                  const next = e.target.value as VideoModel
                   const allowed = durationsForModel(next)
                   const nextDur = allowed.includes(videoGenConfig.duration)
                     ? videoGenConfig.duration
@@ -267,11 +298,11 @@ export default function VideoGenPanel({
                   updateVideoGenConfig({
                     model: next,
                     duration: nextDur,
-                    referenceImageIds: clampRefs(videoGenConfig.referenceImageIds),
+                    referenceImageIds: maxRefsForModel(next) === 0 ? [] : videoGenConfig.referenceImageIds,
                   })
                 }}
               >
-                {APIMART_VIDEO_MODEL_OPTIONS.map((m) => (
+                {VIDEO_MODEL_OPTIONS.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.label}
                   </option>

@@ -1,5 +1,5 @@
 import type { Image } from './image'
-import type { APImartVideoModel } from './video.ts'
+import type { VideoModel, VideoProvider } from './video.ts'
 
 /** 提示词生成器产出的文本卡来源（持久化）。 */
 export interface TextCardPromptGenSource {
@@ -80,8 +80,8 @@ export interface VideoItem {
   src: string
   /** 生成时请求的时长（秒）。 */
   duration?: number
-  api: 'apimart'
-  model: APImartVideoModel
+  api: VideoProvider
+  model: VideoModel
   prompt?: string
   ratio?: string
   referenceImageIds?: string[]

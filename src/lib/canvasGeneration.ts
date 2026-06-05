@@ -1,9 +1,11 @@
 import { nanoid } from 'nanoid'
 import type { Image } from '../types/image.ts'
 import type { VideoItem } from '../types/project.ts'
-import type { APImartVideoModel, VideoQuality } from '../types/video.ts'
+import type { APImartVideoModel, VideoModel, VideoQuality } from '../types/video.ts'
+import { videoProviderForModel } from '../types/video.ts'
 import { coerceApimartModelId, generateViaAPImart } from './apimartGen.ts'
 import { generateVideoViaAPImart } from './apimartVideoGen.ts'
+import { generateVideoViaDashScope } from './dashscopeVideoGen.ts'
 import { generateOneImage, pixelSizeFromRatioAndResolution } from './ai.ts'
 import { centerWorldPositionInViewport } from './canvasGeometry.ts'
 import { persistCanvasNow } from './canvasPersist.ts'
@@ -183,7 +185,7 @@ function collectVideoReferenceRawUrls(projectId: string, referenceImageIds: stri
 export async function runCanvasVideoGeneration(params: {
   viewportEl: HTMLElement | null
   prompt: string
-  model: APImartVideoModel
+  model: VideoModel
   ratio: VideoGenRatio
   quality: VideoQuality
   duration: number
@@ -201,8 +203,14 @@ export async function runCanvasVideoGeneration(params: {
 
   const { canvasPanX, canvasPanY, canvasScale, addVideo } = state
 
+  const provider = videoProviderForModel(model)
+  // 百炼 HappyHorse 是 T2V（文生视频），不用参考图。
   const maxRef =
-    model === 'grok-imagine-1.0-video-apimart' || model === 'kling-v3' ? 7 : 9
+    provider === 'dashscope'
+      ? 0
+      : model === 'grok-imagine-1.0-video-apimart' || model === 'kling-v3'
+        ? 7
+        : 9
   const refIds = referenceImageIds.slice(0, maxRef)
 
   const baseSize = videoBoxFromRatio(ratio)
@@ -231,7 +239,7 @@ export async function runCanvasVideoGeneration(params: {
     height: baseSize.h,
     src: 'pending',
     duration,
-    api: 'apimart',
+    api: provider,
     model,
     prompt: promptTrim,
     ratio,
@@ -244,22 +252,30 @@ export async function runCanvasVideoGeneration(params: {
   addVideo(placeholder)
 
   let imageRawUrls: string[] | undefined
-  if (refIds.length > 0) {
+  if (provider === 'apimart' && refIds.length > 0) {
     imageRawUrls = collectVideoReferenceRawUrls(projectId, refIds)
   }
 
   try {
-    const blobs = await generateVideoViaAPImart({
-      model,
-      prompt: promptTrim,
-      size: ratio,
-      duration,
-      quality,
-      imageRawUrls,
-    })
+    const blobs =
+      provider === 'dashscope'
+        ? await generateVideoViaDashScope({
+            model: 'happyhorse-1.0-t2v',
+            prompt: promptTrim,
+            ratio,
+            duration,
+          })
+        : await generateVideoViaAPImart({
+            model: model as APImartVideoModel,
+            prompt: promptTrim,
+            size: ratio,
+            duration,
+            quality,
+            imageRawUrls,
+          })
     const blob = blobs[0]
     if (!blob || blob.size === 0) {
-      throw new Error('[video/apimart] empty result')
+      throw new Error('[video] empty result')
     }
     const filename = assetFilenameForGeneratedVideo(videoId)
     await uploadGeneratedVideoBlob(projectId, videoId, blob, filename)

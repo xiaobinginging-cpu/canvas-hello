@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { PromptGenAPI, PromptGenModel } from '../lib/promptGen.ts'
 import type { Image } from '../types/image.ts'
 import type { CanvasData, ProjectMeta, TextCard, VideoItem } from '../types/project'
-import type { APImartVideoModel, VideoQuality } from '../types/video.ts'
+import type { VideoModel, VideoQuality } from '../types/video.ts'
 import { getGithubLogin, isAuthenticated as ghIsAuthenticated } from '../lib/github'
 
 export type CanvasSelectedTool =
@@ -54,7 +54,7 @@ export type VideoGenRatio = '16:9' | '9:16' | '1:1'
 
 export interface VideoGenFormConfig {
   prompt: string
-  model: APImartVideoModel
+  model: VideoModel
   ratio: VideoGenRatio
   /** 分辨率档位；各模型 API 映射见 apimartVideoGen。 */
   quality: VideoQuality
