@@ -1,10 +1,57 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronRight, Send, Square, Trash2 } from 'lucide-react'
+import { ChevronRight, ImagePlus, Send, Square, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { hasApiKey } from '../../lib/apiKeys.ts'
 import { getChatAgent } from '../../lib/chatProviders.ts'
+import * as github from '../../lib/github.ts'
 import { CHAT_AGENTS, useChatStore } from '../../store/useChatStore.ts'
 import { useEffectiveUserLabel } from '../../hooks/useEffectiveUserLabel.ts'
+import type { ChatImageRef } from '../../types/chat.ts'
+
+function filenameFromSrc(src: string): string {
+  return src.split('/').filter(Boolean).pop() ?? ''
+}
+
+/** 消息里的图：先用 store 缓存（刚发的 dataUrl），没有则按 ref 拉 `_chat/assets/` → objectURL。 */
+function ChatImage({ imageRef }: { imageRef: ChatImageRef }) {
+  const cached = useChatStore((s) => s.chatImageUrls.get(imageRef.src))
+  const register = useChatStore((s) => s.registerChatImageUrl)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    if (cached) return
+    let revoked = false
+    let objectUrl: string | null = null
+    void (async () => {
+      try {
+        const blob = await github.fetchChatAsset(filenameFromSrc(imageRef.src))
+        if (revoked) return
+        objectUrl = URL.createObjectURL(blob)
+        register(imageRef.src, objectUrl)
+      } catch {
+        if (!revoked) setFailed(true)
+      }
+    })()
+    return () => {
+      revoked = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [imageRef.src, cached, register])
+
+  if (failed) {
+    return <span className="text-[10px] text-neutral-400">图片加载失败</span>
+  }
+  if (!cached) {
+    return <span className="text-[10px] text-neutral-300">…</span>
+  }
+  return (
+    <img
+      src={cached}
+      alt={imageRef.name ?? ''}
+      className="max-h-40 max-w-full rounded border border-neutral-200 object-contain"
+    />
+  )
+}
 
 /** 发光小球（面板头/空态用，同小精灵观感：绿色辉光 + 形状蠕动 + 变色；无漂浮）。 */
 function MiniSprite({ size }: { size: number }) {
@@ -39,10 +86,14 @@ export default function ChatPanel() {
   const send = useChatStore((s) => s.send)
   const cancel = useChatStore((s) => s.cancel)
   const clearMessages = useChatStore((s) => s.clearMessages)
+  const attachments = useChatStore((s) => s.attachments)
+  const addAttachments = useChatStore((s) => s.addAttachments)
+  const removeAttachment = useChatStore((s) => s.removeAttachment)
 
   const userLabel = useEffectiveUserLabel()
   const [draft, setDraft] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -54,9 +105,11 @@ export default function ChatPanel() {
   const keyOk = agent ? hasApiKey(agent.keyProvider) : false
   const sending = status === 'sending'
 
+  const canSend = (draft.trim() !== '' || attachments.length > 0) && !sending
+
   function submit(): void {
-    const t = draft.trim()
-    if (!t || sending) return
+    if (!canSend) return
+    const t = draft
     setDraft('')
     void send(t)
   }
@@ -139,13 +192,24 @@ export default function ChatPanel() {
                 className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}
               >
                 <div
-                  className={`max-w-[85%] whitespace-pre-wrap break-words rounded-lg px-3 py-2 text-sm leading-relaxed ${
+                  className={`flex max-w-[85%] flex-col gap-2 rounded-lg px-3 py-2 text-sm leading-relaxed ${
                     m.role === 'user'
                       ? 'bg-neutral-900 text-white'
                       : 'border border-neutral-200 bg-white text-neutral-900'
                   }`}
                 >
-                  {m.content || (sending ? <span className="animate-pulse text-neutral-400">▋</span> : '')}
+                  {m.images && m.images.length ? (
+                    <div className="flex flex-col gap-1.5">
+                      {m.images.map((img) => (
+                        <ChatImage key={img.src} imageRef={img} />
+                      ))}
+                    </div>
+                  ) : null}
+                  {m.content ? (
+                    <span className="whitespace-pre-wrap break-words">{m.content}</span>
+                  ) : sending && m.role === 'assistant' ? (
+                    <span className="animate-pulse text-neutral-400">▋</span>
+                  ) : null}
                 </div>
               </li>
             ))}
@@ -161,7 +225,49 @@ export default function ChatPanel() {
 
       {/* input */}
       <div className="shrink-0 border-t border-neutral-200 p-3">
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            const files = e.target.files
+            if (files?.length) void addAttachments(Array.from(files))
+            e.target.value = ''
+          }}
+        />
+
+        {attachments.length > 0 ? (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {attachments.map((a) => (
+              <div
+                key={a.id}
+                className="relative h-14 w-14 overflow-hidden rounded border border-neutral-200 bg-neutral-100"
+              >
+                <img src={a.dataUrl} alt="" className="h-full w-full object-cover" />
+                <button
+                  type="button"
+                  title="移除"
+                  onClick={() => removeAttachment(a.id)}
+                  className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-neutral-800 text-[10px] text-white"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         <div className="flex items-end gap-2 rounded-lg border border-neutral-300 bg-white px-2 py-1.5">
+          <button
+            type="button"
+            title="加图片"
+            onClick={() => fileRef.current?.click()}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800"
+          >
+            <ImagePlus size={16} strokeWidth={2} aria-hidden />
+          </button>
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -188,7 +294,7 @@ export default function ChatPanel() {
             <button
               type="button"
               title="发送"
-              disabled={!draft.trim()}
+              disabled={!canSend}
               onClick={submit}
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-neutral-900 text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
             >

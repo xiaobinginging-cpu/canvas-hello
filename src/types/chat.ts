@@ -8,10 +8,20 @@ export type ChatRole = 'user' | 'assistant'
 /** 聊天「智能体」provider（全部走 OpenAI 兼容接口；≠ 图像生成的 apimart）。 */
 export type ChatProvider = 'google' | 'kimi' | 'mimo' | 'glm' | 'qwen' | 'deepseek'
 
+/** user 消息附带的图片（多模态）。存 `_chat/assets/`、跨设备同步。 */
+export interface ChatImageRef {
+  /** `_chat/assets/chat-{nanoid}.{ext}`。 */
+  src: string
+  /** 原始文件名（可选）。 */
+  name?: string
+}
+
 export interface ChatMessage {
   id: string
   role: ChatRole
   content: string
+  /** user 消息附带的图（多模态）；无图省略。 */
+  images?: ChatImageRef[]
   /** assistant 消息：生成所用 provider/model（user 消息可省略）。 */
   api?: ChatProvider
   model?: string

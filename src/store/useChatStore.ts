@@ -3,7 +3,35 @@ import { nanoid } from 'nanoid'
 import * as github from '../lib/github.ts'
 import { streamChat } from '../lib/chat.ts'
 import { CHAT_AGENTS, DEFAULT_CHAT_AGENT_ID, getChatAgent } from '../lib/chatProviders.ts'
-import type { ChatMessage, ChatProvider } from '../types/chat.ts'
+import type { ChatImageRef, ChatMessage, ChatProvider } from '../types/chat.ts'
+import type { ChatContent } from '../lib/chat.ts'
+
+function imageExtFromFile(file: File): string {
+  const t = (file.type || '').toLowerCase()
+  if (t.includes('jpeg') || t.includes('jpg')) return 'jpg'
+  if (t.includes('png')) return 'png'
+  if (t.includes('webp')) return 'webp'
+  if (t.includes('gif')) return 'gif'
+  const raw = (file.name.split('.').pop() || '').toLowerCase()
+  return ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(raw) ? (raw === 'jpeg' ? 'jpg' : raw) : 'png'
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(String(r.result))
+    r.onerror = () => reject(new Error('读取图片失败'))
+    r.readAsDataURL(file)
+  })
+}
+
+let attachIdSeq = 0
+
+export interface ChatAttachment {
+  id: string
+  file: File
+  dataUrl: string
+}
 
 const LS_SPRITE_X = 'canvas-hello.chat.spriteX'
 const LS_SPRITE_Y = 'canvas-hello.chat.spriteY'
@@ -62,6 +90,11 @@ interface ChatStoreState {
   loaded: boolean
   loading: boolean
 
+  /** 输入框待发的图片附件（多模态）。 */
+  attachments: ChatAttachment[]
+  /** 历史/已发图片 ref.src → 可显示 URL（dataUrl 或 objectURL）缓存。 */
+  chatImageUrls: Map<string, string>
+
   openPanel: () => void
   closePanel: () => void
   setSpritePos: (x: number, y: number) => void
@@ -71,6 +104,9 @@ interface ChatStoreState {
   send: (text: string) => Promise<void>
   cancel: () => void
   clearMessages: () => Promise<void>
+  addAttachments: (files: File[]) => Promise<void>
+  removeAttachment: (id: string) => void
+  registerChatImageUrl: (src: string, url: string) => void
 }
 
 let abortController: AbortController | null = null
@@ -86,6 +122,8 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   error: null,
   loaded: false,
   loading: false,
+  attachments: [],
+  chatImageUrls: new Map(),
 
   openPanel: () => {
     set({ panelOpen: true })
@@ -126,11 +164,31 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
 
   send: async (text) => {
     const trimmed = text.trim()
-    if (!trimmed || get().status === 'sending') return
+    const atts = get().attachments
+    if ((!trimmed && atts.length === 0) || get().status === 'sending') return
 
     const now = Date.now()
     const { agentId, model } = get()
-    const userMsg: ChatMessage = { id: nanoid(), role: 'user', content: trimmed, createdAt: now }
+
+    // 当前附件 → 图 ref + 上传资产 + 立即显示缓存
+    const imageRefs: ChatImageRef[] = []
+    const newAssets: { name: string; blob: Blob }[] = []
+    const nextImageUrls = new Map(get().chatImageUrls)
+    for (const a of atts) {
+      const filename = `chat-${nanoid()}.${imageExtFromFile(a.file)}`
+      const src = `_chat/assets/${filename}`
+      imageRefs.push({ src, name: a.file.name })
+      newAssets.push({ name: filename, blob: a.file })
+      nextImageUrls.set(src, a.dataUrl)
+    }
+
+    const userMsg: ChatMessage = {
+      id: nanoid(),
+      role: 'user',
+      content: trimmed,
+      images: imageRefs.length ? imageRefs : undefined,
+      createdAt: now,
+    }
     const assistantId = nanoid()
     const assistantMsg: ChatMessage = {
       id: assistantId,
@@ -141,12 +199,25 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       createdAt: now + 1,
     }
 
-    const turns = [...get().messages, userMsg].map((m) => ({ role: m.role, content: m.content }))
+    // 历史轮纯文本；当前轮多模态（带图则用 data URL part 数组）
+    const past: { role: 'user' | 'assistant'; content: ChatContent }[] = get().messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }))
+    const currentContent: ChatContent = atts.length
+      ? [
+          ...(trimmed ? [{ type: 'text' as const, text: trimmed }] : []),
+          ...atts.map((a) => ({ type: 'image_url' as const, image_url: { url: a.dataUrl } })),
+        ]
+      : trimmed
+    const turns = [...past, { role: 'user' as const, content: currentContent }]
 
     set({
       messages: [...get().messages, userMsg, assistantMsg],
       status: 'sending',
       error: null,
+      attachments: [],
+      chatImageUrls: nextImageUrls,
     })
 
     abortController = new AbortController()
@@ -165,7 +236,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         },
       })
       set({ status: 'idle' })
-      void github.saveChat({ messages: get().messages, updatedAt: Date.now() }).catch((e) => {
+      void github.saveChat({ messages: get().messages, updatedAt: Date.now() }, newAssets).catch((e) => {
         console.warn('[chat] saveChat failed', e)
       })
     } catch (e) {
@@ -181,7 +252,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         ),
       }))
       if (!aborted) {
-        void github.saveChat({ messages: get().messages, updatedAt: Date.now() }).catch(() => {})
+        void github.saveChat({ messages: get().messages, updatedAt: Date.now() }, newAssets).catch(() => {})
       }
     } finally {
       abortController = null
@@ -197,13 +268,37 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   clearMessages: async () => {
     abortController?.abort()
     abortController = null
-    set({ messages: [], status: 'idle', error: null })
+    set({ messages: [], status: 'idle', error: null, attachments: [] })
     try {
       await github.saveChat({ messages: [], updatedAt: Date.now() })
     } catch (e) {
       console.warn('[chat] clear saveChat failed', e)
     }
   },
+
+  addAttachments: async (files) => {
+    const imgs = files.filter((f) => f.type.startsWith('image/'))
+    for (const file of imgs) {
+      try {
+        const dataUrl = await fileToDataUrl(file)
+        attachIdSeq += 1
+        const att: ChatAttachment = { id: `att-${attachIdSeq}`, file, dataUrl }
+        set((s) => ({ attachments: [...s.attachments, att] }))
+      } catch (e) {
+        console.warn('[chat] read attachment failed', e)
+      }
+    }
+  },
+
+  removeAttachment: (id) =>
+    set((s) => ({ attachments: s.attachments.filter((a) => a.id !== id) })),
+
+  registerChatImageUrl: (src, url) =>
+    set((s) => {
+      const next = new Map(s.chatImageUrls)
+      next.set(src, url)
+      return { chatImageUrls: next }
+    }),
 }))
 
 export { CHAT_AGENTS }

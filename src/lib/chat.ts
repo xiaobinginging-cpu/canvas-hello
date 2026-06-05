@@ -26,9 +26,17 @@ function createClient(agentId: ChatProvider, keyProvider: Parameters<typeof getA
   })
 }
 
+/** 多模态内容：纯文本，或 文本 + 图片 part 数组（OpenAI 兼容）。 */
+export type ChatContent =
+  | string
+  | Array<
+      | { type: 'text'; text: string }
+      | { type: 'image_url'; image_url: { url: string } }
+    >
+
 export interface ChatTurn {
   role: 'user' | 'assistant'
-  content: string
+  content: ChatContent
 }
 
 /**
@@ -50,7 +58,11 @@ export async function streamChat(opts: {
   let full = ''
   try {
     const stream = await client.chat.completions.create(
-      { model: opts.model, messages: opts.messages, stream: true },
+      {
+        model: opts.model,
+        messages: opts.messages as OpenAI.Chat.ChatCompletionMessageParam[],
+        stream: true,
+      },
       { signal: opts.signal },
     )
     for await (const chunk of stream) {

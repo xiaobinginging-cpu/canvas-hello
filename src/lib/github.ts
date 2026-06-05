@@ -1766,27 +1766,77 @@ export async function loadChat(): Promise<ChatData> {
   }
 }
 
-async function flushChatToGitHub(data: ChatData): Promise<void> {
+async function flushChatToGitHub(
+  data: ChatData,
+  newAssets: { name: string; blob: Blob }[],
+): Promise<void> {
   const octokit = await getAuthenticatedOctokit()
   await ensureRepoGithub()
   const owner = await getOwnerLogin(octokit)
   const branch = await getRepoBranch(octokit, owner)
+  const msg = `update _chat - ${new Date().toISOString()}`
+
+  for (const asset of newAssets) {
+    const safeName = asset.name.replace(/^\/+/, '')
+    const filePath = `${CHAT_PREFIX}/assets/${safeName}`
+    if (!asset.blob || asset.blob.size === 0) continue
+    const b64 = await blobToBase64(asset.blob)
+    const sha = await getShaIfExists(octokit, owner, filePath, branch)
+    await putBinaryFile(octokit, owner, branch, filePath, b64, msg, sha)
+  }
+
   const json = `${JSON.stringify(data, null, 2)}\n`
   const path = `${CHAT_PREFIX}/chat.json`
   const sha = await getShaIfExists(octokit, owner, path, branch)
-  await putTextFile(octokit, owner, branch, path, json, `update _chat - ${new Date().toISOString()}`, sha)
+  await putTextFile(octokit, owner, branch, path, json, msg, sha)
 }
 
-/** Writes `_chat/chat.json`. Prefers R2, falls back to GitHub (同 saveLibrary)。 */
-export async function saveChat(data: ChatData): Promise<void> {
+/** Writes `_chat/chat.json` + optional image assets. Prefers R2, falls back to GitHub (同 saveLibrary)。 */
+export async function saveChat(
+  data: ChatData,
+  newAssets: { name: string; blob: Blob }[] = [],
+): Promise<void> {
   const json = `${JSON.stringify(data, null, 2)}\n`
   if (r2PublicReadConfigured()) {
     try {
+      for (const asset of newAssets) {
+        if (!asset.blob || asset.blob.size === 0) continue
+        await r2UploadViaApi(chatKey('assets', asset.name.replace(/^\/+/, '')), asset.blob)
+      }
       await r2UploadViaApi(chatKey('chat.json'), new Blob([json], { type: 'application/json' }))
       return
     } catch (e) {
       console.warn('[r2/chat] save failed, falling back to GitHub', e)
     }
   }
-  await flushChatToGitHub(data)
+  await flushChatToGitHub(data, newAssets)
+}
+
+/** Lazy-loads one chat image under `_chat/assets/{filename}` as a Blob（同 fetchLibraryAsset）。 */
+export async function fetchChatAsset(filename: string): Promise<Blob> {
+  const mime = mimeForAssetFilename(filename)
+  const key = chatKey('assets', filename)
+  if (r2PublicReadConfigured()) {
+    try {
+      const blob = await r2FetchBlobFromPublicThenApi(key, mime)
+      if (blob && blob.size > 0) return blob
+    } catch (e) {
+      console.warn('[r2/fetchChatAsset] failed, falling back to GitHub', e)
+    }
+  }
+  // GitHub 兜底
+  const octokit = await getAuthenticatedOctokit()
+  await ensureRepoGithub()
+  const owner = await getOwnerLogin(octokit)
+  const branch = await getRepoBranch(octokit, owner)
+  const path = `${CHAT_PREFIX}/assets/${filename.replace(/^\/+/, '')}`
+  const { data } = await octokit.rest.repos.getContent({ owner, repo: REPO_NAME, path, ref: branch })
+  if (Array.isArray(data) || data.type !== 'file') throw new Error(`Not a file: ${path}`)
+  if (shouldFetchAssetViaGitBlob({ content: typeof data.content === 'string' ? data.content : undefined, encoding: data.encoding, size: data.size })) {
+    if (!data.sha) throw new Error(`[fetchChatAsset] missing sha path=${path}`)
+    const { data: blobData } = await octokit.rest.git.getBlob({ owner, repo: REPO_NAME, file_sha: data.sha })
+    if (blobData.encoding !== 'base64' || blobData.content == null) throw new Error(`[fetchChatAsset] bad blob path=${path}`)
+    return base64ToBlob(blobData.content.replace(/\s/g, ''), mime)
+  }
+  return base64ToBlob((typeof data.content === 'string' ? data.content : '').replace(/\s/g, ''), mime)
 }
