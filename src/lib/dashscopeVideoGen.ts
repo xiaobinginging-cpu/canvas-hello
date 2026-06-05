@@ -1,6 +1,6 @@
 /** 百炼（DashScope）直连视频生成：异步合成任务（提交→轮询→下载），用千问 key。 */
 import { getApiKey, invalidApiKeyMessage, missingApiKeyMessage } from './apiKeys.ts'
-import type { DashscopeVideoModel } from '../types/video.ts'
+import type { DashscopeVideoModel, VideoQuality } from '../types/video.ts'
 
 function dashscopeBase(): string {
   const origin =
@@ -10,11 +10,9 @@ function dashscopeBase(): string {
   return `${origin}/api/dashscope`
 }
 
-/** ratio → 像素尺寸（百炼用 `宽*高`）。 */
-function sizeFromRatio(ratio: string): string {
-  if (ratio === '9:16') return '720*1280'
-  if (ratio === '1:1') return '960*960'
-  return '1280*720'
+/** UI 档位 → HappyHorse resolution（仅支持 720P / 1080P，其余降级 720P）。 */
+function resolutionFromQuality(quality: VideoQuality): '720P' | '1080P' {
+  return quality === '1080p' ? '1080P' : '720P'
 }
 
 const POLL_INTERVAL_MS = 5000
@@ -29,6 +27,7 @@ export async function generateVideoViaDashScope(opts: {
   prompt: string
   ratio: string
   duration: number
+  quality: VideoQuality
 }): Promise<Blob[]> {
   const apiKey = getApiKey('qwen')
   if (!apiKey) throw new Error(missingApiKeyMessage('qwen'))
@@ -47,7 +46,11 @@ export async function generateVideoViaDashScope(opts: {
       body: JSON.stringify({
         model: opts.model,
         input: { prompt: opts.prompt },
-        parameters: { size: sizeFromRatio(opts.ratio), duration: opts.duration },
+        parameters: {
+          resolution: resolutionFromQuality(opts.quality),
+          ratio: opts.ratio,
+          duration: opts.duration,
+        },
       }),
     },
   )

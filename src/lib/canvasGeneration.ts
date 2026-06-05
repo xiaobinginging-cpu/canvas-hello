@@ -264,6 +264,7 @@ export async function runCanvasVideoGeneration(params: {
             prompt: promptTrim,
             ratio,
             duration,
+            quality,
           })
         : await generateVideoViaAPImart({
             model: model as APImartVideoModel,
