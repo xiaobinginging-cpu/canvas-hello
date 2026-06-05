@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronRight, ImagePlus, Send, Square, Trash2 } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { Link } from 'react-router-dom'
 import { hasApiKey } from '../../lib/apiKeys.ts'
 import { getChatAgent, isVisionModel } from '../../lib/chatProviders.ts'
@@ -203,13 +205,17 @@ export default function ChatPanel() {
                   {/* 文字才进气泡；纯图消息不显示空气泡 */}
                   {m.content ? (
                     <div
-                      className={`whitespace-pre-wrap break-words rounded-lg px-3 py-2 text-sm leading-relaxed ${
+                      className={`rounded-lg px-3 py-2 text-sm leading-relaxed ${
                         m.role === 'user'
-                          ? 'bg-neutral-900 text-white'
-                          : 'border border-neutral-200 bg-white text-neutral-900'
+                          ? 'whitespace-pre-wrap break-words bg-neutral-900 text-white'
+                          : 'chat-md border border-neutral-200 bg-white text-neutral-900'
                       }`}
                     >
-                      {m.content}
+                      {m.role === 'assistant' ? (
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+                      ) : (
+                        m.content
+                      )}
                     </div>
                   ) : sending && m.role === 'assistant' ? (
                     <div className="rounded-lg border border-neutral-200 bg-white px-3 py-2">
