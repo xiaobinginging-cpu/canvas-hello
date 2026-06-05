@@ -247,11 +247,23 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       createdAt: now + 1,
     }
 
-    // 历史轮纯文本；当前轮多模态（带图则用 data URL part 数组）
-    const past: { role: 'user' | 'assistant'; content: ChatContent }[] = get().messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }))
+    // 历史轮：视觉模型才带历史图（用公开 URL，免重编码；文本模型带图会 400 故纯文本）。
+    const visionOk = isVisionModel(agentId, model)
+    const past: { role: 'user' | 'assistant'; content: ChatContent }[] = get().messages.map((m) => {
+      if (visionOk && m.role === 'user' && m.images && m.images.length) {
+        return {
+          role: m.role,
+          content: [
+            ...(m.content ? [{ type: 'text' as const, text: m.content }] : []),
+            ...m.images.map((img) => ({
+              type: 'image_url' as const,
+              image_url: { url: github.getChatAssetUrl(img.src.split('/').pop() ?? '') },
+            })),
+          ],
+        }
+      }
+      return { role: m.role, content: m.content }
+    })
     const currentContent: ChatContent = atts.length
       ? [
           ...(trimmed ? [{ type: 'text' as const, text: trimmed }] : []),

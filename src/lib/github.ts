@@ -1788,6 +1788,20 @@ function chatKey(...segments: string[]): string {
   return [CHAT_PREFIX, ...rest].join('/')
 }
 
+/**
+ * 聊天图片的**公开 URL**（R2 公共 / jsDelivr）。用于多轮把历史图以 `image_url.url` 传给模型——
+ * 模型服务端按 URL 拉取，免去重新 base64 编码。
+ */
+export function getChatAssetUrl(filename: string): string {
+  const fn = filename.replace(/^\/+/, '')
+  if (r2PublicReadConfigured()) {
+    return r2PublicUrlForKey(chatKey('assets', fn))
+  }
+  const { owner, repo, branch } = getRepoConfig()
+  const raw = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${CHAT_PREFIX}/assets/${fn}`
+  return githubRawToJsdelivr(raw)
+}
+
 /** Loads `_chat/chat.json`. Missing → empty; transient errors throw. 同 loadLibrary：不走 CDN。 */
 export async function loadChat(): Promise<ChatData> {
   if (r2PublicReadConfigured()) {
