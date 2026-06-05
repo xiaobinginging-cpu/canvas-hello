@@ -26,6 +26,10 @@ export function getR2S3Client(): S3Client {
         accessKeyId: process.env.R2_ACCESS_KEY_ID as string,
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY as string,
       },
+      // R2 + 浏览器预签名 PUT：关掉 SDK v3 默认 checksum，否则签名带 checksum 头、
+      // 浏览器无法复现 → 403 SignatureDoesNotMatch → 退回 base64 撞 4.5MB 上限（大视频传不上）。
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED',
     })
   }
   return client
