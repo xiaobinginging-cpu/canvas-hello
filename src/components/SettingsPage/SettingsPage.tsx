@@ -194,7 +194,7 @@ export default function SettingsPage() {
           <span aria-hidden>←</span>
           <Logo variant="solid" size={32} />
         </Link>
-        <span className="text-sm font-medium tracking-tight text-neutral-800">API 密钥</span>
+        <h1 className="text-sm font-medium tracking-tight text-neutral-800">API 密钥</h1>
       </header>
 
       <main className="min-h-0 w-full flex-1 overflow-y-auto">
