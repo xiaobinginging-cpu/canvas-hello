@@ -194,23 +194,27 @@ export default function ChatPanel() {
                 className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}
               >
                 <div
-                  className={`flex max-w-[85%] flex-col gap-2 rounded-lg px-3 py-2 text-sm leading-relaxed ${
-                    m.role === 'user'
-                      ? 'bg-neutral-900 text-white'
-                      : 'border border-neutral-200 bg-white text-neutral-900'
+                  className={`flex max-w-[85%] flex-col gap-1.5 ${
+                    m.role === 'user' ? 'items-end' : 'items-start'
                   }`}
                 >
-                  {m.images && m.images.length ? (
-                    <div className="flex flex-col gap-1.5">
-                      {m.images.map((img) => (
-                        <ChatImage key={img.src} imageRef={img} />
-                      ))}
-                    </div>
-                  ) : null}
+                  {/* 图片裸放、不裹气泡 */}
+                  {m.images?.map((img) => <ChatImage key={img.src} imageRef={img} />)}
+                  {/* 文字才进气泡；纯图消息不显示空气泡 */}
                   {m.content ? (
-                    <span className="whitespace-pre-wrap break-words">{m.content}</span>
+                    <div
+                      className={`whitespace-pre-wrap break-words rounded-lg px-3 py-2 text-sm leading-relaxed ${
+                        m.role === 'user'
+                          ? 'bg-neutral-900 text-white'
+                          : 'border border-neutral-200 bg-white text-neutral-900'
+                      }`}
+                    >
+                      {m.content}
+                    </div>
                   ) : sending && m.role === 'assistant' ? (
-                    <span className="animate-pulse text-neutral-400">▋</span>
+                    <div className="rounded-lg border border-neutral-200 bg-white px-3 py-2">
+                      <span className="animate-pulse text-neutral-400">▋</span>
+                    </div>
                   ) : null}
                 </div>
               </li>

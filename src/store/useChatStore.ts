@@ -30,12 +30,54 @@ function fileToDataUrl(file: File): Promise<string> {
   })
 }
 
+function loadImg(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('解码图片失败'))
+    img.src = src
+  })
+}
+
+/**
+ * 压缩聊天图片：长边压到 1568px + JPEG 0.85，避免大图 base64 撞 Vercel ~4.5MB body 上限（413）。
+ * 已经够小的（≤1568px 且 <1MB）原样返回，避免无谓掉画质。
+ */
+const CHAT_IMG_MAX_PX = 1568
+async function processChatImage(file: File): Promise<{ blob: Blob; dataUrl: string; ext: string }> {
+  const dataUrl0 = await fileToDataUrl(file)
+  let img: HTMLImageElement
+  try {
+    img = await loadImg(dataUrl0)
+  } catch {
+    return { blob: file, dataUrl: dataUrl0, ext: imageExtFromFile(file) }
+  }
+  const longest = Math.max(img.naturalWidth, img.naturalHeight)
+  if (longest <= CHAT_IMG_MAX_PX && file.size <= 1_000_000) {
+    return { blob: file, dataUrl: dataUrl0, ext: imageExtFromFile(file) }
+  }
+  const scale = Math.min(1, CHAT_IMG_MAX_PX / longest)
+  const w = Math.max(1, Math.round(img.naturalWidth * scale))
+  const h = Math.max(1, Math.round(img.naturalHeight * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return { blob: file, dataUrl: dataUrl0, ext: imageExtFromFile(file) }
+  ctx.drawImage(img, 0, 0, w, h)
+  const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/jpeg', 0.85))
+  if (!blob) return { blob: file, dataUrl: dataUrl0, ext: imageExtFromFile(file) }
+  return { blob, dataUrl: canvas.toDataURL('image/jpeg', 0.85), ext: 'jpg' }
+}
+
 let attachIdSeq = 0
 
 export interface ChatAttachment {
   id: string
-  file: File
+  blob: Blob
   dataUrl: string
+  name: string
+  ext: string
 }
 
 const LS_SPRITE_X = 'canvas-hello.chat.spriteX'
@@ -181,10 +223,10 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     const newAssets: { name: string; blob: Blob }[] = []
     const nextImageUrls = new Map(get().chatImageUrls)
     for (const a of atts) {
-      const filename = `chat-${nanoid()}.${imageExtFromFile(a.file)}`
+      const filename = `chat-${nanoid()}.${a.ext}`
       const src = `_chat/assets/${filename}`
-      imageRefs.push({ src, name: a.file.name })
-      newAssets.push({ name: filename, blob: a.file })
+      imageRefs.push({ src, name: a.name })
+      newAssets.push({ name: filename, blob: a.blob })
       nextImageUrls.set(src, a.dataUrl)
     }
 
@@ -286,9 +328,9 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     const imgs = files.filter((f) => f.type.startsWith('image/'))
     for (const file of imgs) {
       try {
-        const dataUrl = await fileToDataUrl(file)
+        const { blob, dataUrl, ext } = await processChatImage(file)
         attachIdSeq += 1
-        const att: ChatAttachment = { id: `att-${attachIdSeq}`, file, dataUrl }
+        const att: ChatAttachment = { id: `att-${attachIdSeq}`, blob, dataUrl, name: file.name, ext }
         set((s) => ({ attachments: [...s.attachments, att] }))
       } catch (e) {
         console.warn('[chat] read attachment failed', e)
