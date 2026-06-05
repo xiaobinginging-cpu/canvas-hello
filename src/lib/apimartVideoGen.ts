@@ -287,13 +287,18 @@ export async function generateVideoViaAPImart(opts: {
     const progress = payload?.progress
     console.log('[video/apimart] poll status=', status, 'progress=', progress)
 
-    if (status === 'completed') {
-      const urls = extractVideoUrlsFromPollPayload(payload)
+    // 放宽完成判定：拿到视频 URL，或状态是 completed/succeeded/... 任一就算成
+    // （APImart 轮询有时卡在 processing 99% 不翻 completed，但结果其实已出）。
+    const statusLc = status.toLowerCase()
+    const urls = extractVideoUrlsFromPollPayload(payload)
+    const isDone = ['completed', 'succeeded', 'success', 'done', 'finished'].includes(statusLc)
+
+    if (isDone || urls.length > 0) {
       if (urls.length === 0) {
-        console.error('[video/apimart] error → no video urls in result', JSON.stringify(payload))
+        console.error('[video/apimart] error → done but no video urls', JSON.stringify(payload))
         throw new Error('[video/apimart/completed] no video URL in response')
       }
-      console.log('[video/apimart] completed, downloading', urls.length, 'videos')
+      console.log('[video/apimart] done, downloading', urls.length, 'videos')
       const blobs = await Promise.all(
         urls.map(async (u) => {
           const r = await fetch(u)
@@ -307,9 +312,9 @@ export async function generateVideoViaAPImart(opts: {
       return blobs
     }
 
-    if (status === 'failed') {
-      console.error('[video/apimart] error → task failed')
-      throw new Error('[video/apimart] task failed')
+    if (['failed', 'error', 'cancelled', 'canceled'].includes(statusLc)) {
+      console.error('[video/apimart] error → task failed', JSON.stringify(payload))
+      throw new Error(`[video/apimart] task ${status}`)
     }
   }
 }
