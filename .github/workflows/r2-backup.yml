@@ -1,0 +1,54 @@
+# R2 每日自动备份：把主桶完整镜像到 <bucket>-backup/current，
+# 被覆盖/删除的旧文件按日期移入 history/YYYY-MM-DD/（保留 30 天）——
+# 误删误覆盖时从备份桶捞回来。R2 原生不支持对象版本控制，故用此方案替代。
+# 凭证在仓库 Settings → Secrets（R2_ENDPOINT / R2_BUCKET / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY）。
+name: R2 backup
+
+on:
+  schedule:
+    - cron: '0 20 * * *' # UTC 20:00 = 北京时间凌晨 4 点
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Install rclone
+        run: curl -fsSL https://rclone.org/install.sh | sudo bash
+
+      - name: Sync R2 → backup bucket
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          rclone mkdir "R2:${BUCKET}-backup"
+          rclone sync "R2:${BUCKET}" "R2:${BUCKET}-backup/current" \
+            --backup-dir "R2:${BUCKET}-backup/history/$(date -u +%Y-%m-%d)" \
+            --fast-list --transfers 8 --stats-one-line -v
+
+      - name: Prune history older than 30 days
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          rclone delete "R2:${BUCKET}-backup/history" --min-age 30d || true
+          rclone rmdirs "R2:${BUCKET}-backup/history" --leave-root || true
+
+      - name: Report backup size
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          BUCKET: ${{ secrets.R2_BUCKET }}
+        run: rclone size "R2:${BUCKET}-backup/current"
