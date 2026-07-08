@@ -11,12 +11,14 @@ export type APImartModel =
   | 'gemini-3-pro-image-preview-official'
   | 'gpt-image-2-official'
   | 'doubao-seedream-5-0-lite'
+  | 'midjourney'
 
 export const APIMART_MODEL_IDS: readonly APImartModel[] = [
   'gemini-3.1-flash-image-preview-official',
   'gemini-3-pro-image-preview-official',
   'gpt-image-2-official',
   'doubao-seedream-5-0-lite',
+  'midjourney',
 ]
 
 /** 默认：Banana 2 official（更便宜更快）。 */
@@ -33,6 +35,7 @@ export const APIMART_IMAGE_MODEL_OPTIONS: readonly {
   { value: 'gemini-3-pro-image-preview-official', label: 'Banana Pro' },
   { value: 'gpt-image-2-official', label: 'GPT Image 2' },
   { value: 'doubao-seedream-5-0-lite', label: '即梦 5.0 Lite' },
+  { value: 'midjourney', label: 'Midjourney' },
 ]
 
 const LEGACY_APIMART_MODEL_MAP: Partial<Record<string, APImartModel>> = {
@@ -122,6 +125,153 @@ function extractImageUrlsFromPollPayload(payload: unknown): string[] {
   return urls
 }
 
+/** 提交任务（images/generations、midjourney/generations、upscale 共用信封解析），返回 task_id。 */
+async function submitApimartTask(
+  url: string,
+  apiKey: string,
+  body: Record<string, unknown>,
+  tag: string,
+): Promise<string> {
+  const submitResp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (submitResp.status === 401 || submitResp.status === 403) {
+    throw new Error(invalidApiKeyMessage('apimart'))
+  }
+
+  const submitText = await submitResp.text()
+  let submitData: unknown
+  try {
+    submitData = JSON.parse(submitText) as Record<string, unknown>
+  } catch {
+    throw new Error(`[${tag}/submit] invalid JSON ${submitResp.status}`)
+  }
+
+  const errObj = (submitData as { error?: { message?: string } }).error
+  if (errObj) {
+    const msg = errObj.message ?? JSON.stringify(errObj)
+    console.error(`[${tag}] error →`, msg)
+    throw new Error(`[${tag}/submit] ${msg}`)
+  }
+  if (!submitResp.ok) {
+    console.error(`[${tag}] error →`, submitText)
+    throw new Error(`[${tag}/submit] HTTP ${submitResp.status}`)
+  }
+
+  const sub = submitData as { code?: number; error?: { message?: string } }
+  const code = sub.code
+  if (code !== undefined && code !== 0 && code !== 200) {
+    throw new Error(`[${tag}/submit] code ${code}: ${sub.error?.message ?? ''}`)
+  }
+
+  const data = (submitData as { data?: unknown }).data
+  const taskId =
+    Array.isArray(data) && data[0] && typeof (data[0] as { task_id?: string }).task_id === 'string'
+      ? (data[0] as { task_id: string }).task_id
+      : data &&
+          typeof data === 'object' &&
+          'task_id' in data &&
+          typeof (data as { task_id: string }).task_id === 'string'
+        ? (data as { task_id: string }).task_id
+        : undefined
+
+  if (!taskId) {
+    console.error(`[${tag}] error → missing task_id`, submitData)
+    throw new Error(`[${tag}/submit] missing task_id`)
+  }
+
+  console.log(`[${tag}] submitted task=`, taskId)
+  return taskId
+}
+
+/** 轮询统一任务接口直到出图，返回结果 URL 列表（放宽完成判定，同 video 修法）。 */
+async function pollApimartTaskUrls(
+  base: string,
+  apiKey: string,
+  taskId: string,
+  expectedN: number,
+  tag: string,
+): Promise<string[]> {
+  const startTime = Date.now()
+
+  while (true) {
+    if (Date.now() - startTime > TIMEOUT_MS) {
+      console.error(`[${tag}] error → timeout`)
+      throw new Error(`[${tag}/poll] timeout after ${Math.round(TIMEOUT_MS / 60000)} minutes`)
+    }
+
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
+
+    const statusResp = await fetch(`${base}/tasks/${taskId}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    })
+
+    if (statusResp.status === 401 || statusResp.status === 403) {
+      throw new Error(invalidApiKeyMessage('apimart'))
+    }
+    const statusText = await statusResp.text()
+    let statusData: Record<string, unknown>
+    try {
+      statusData = JSON.parse(statusText) as Record<string, unknown>
+    } catch {
+      console.error(`[${tag}] error → invalid poll JSON`, statusText)
+      throw new Error(`[${tag}/poll] invalid JSON ${statusResp.status}`)
+    }
+
+    const pollBody = statusData as { code?: number; error?: { message?: string } }
+    const pollCode = pollBody.code
+    if (pollCode !== undefined && pollCode !== 0 && pollCode !== 200) {
+      throw new Error(`[${tag}/poll] code ${pollCode}: ${pollBody.error?.message ?? ''}`)
+    }
+
+    const pollErr = statusData.error as { message?: string } | undefined
+    if (pollErr) {
+      const msg = pollErr.message ?? JSON.stringify(pollErr)
+      console.error(`[${tag}] error →`, msg)
+      throw new Error(`[${tag}/poll] ${msg}`)
+    }
+
+    const payload = statusData.data as
+      | {
+          status?: string
+          progress?: number
+          result?: { images?: Array<{ url?: string | string[] } | { url: string }> }
+        }
+      | undefined
+
+    const status = payload?.status ?? ''
+    const progress = payload?.progress
+    console.log(`[${tag}] poll status=`, status, 'progress=', progress)
+
+    // 放宽完成判定：APImart 有时卡在 processing 99% 不翻 completed，但结果已出。
+    // n>1 时可能中途出现部分 URL，故只有「状态完成 / URL 数够 n / progress 100 且有 URL」才算成。
+    const statusLc = status.toLowerCase()
+    const urls = extractImageUrlsFromPollPayload(payload)
+    const isDoneStatus = ['completed', 'succeeded', 'success', 'done', 'finished'].includes(statusLc)
+    const isDone =
+      isDoneStatus || urls.length >= expectedN || (urls.length > 0 && (progress ?? 0) >= 100)
+
+    if (isDone) {
+      if (urls.length === 0) {
+        console.error(`[${tag}] error → completed but no image URL`, statusData)
+        throw new Error(`[${tag}/completed] no image URL in response`)
+      }
+      return urls
+    }
+
+    if (['failed', 'error', 'cancelled', 'canceled'].includes(statusLc)) {
+      console.error(`[${tag}] error → task`, status)
+      throw new Error(`[${tag}] task ${status}`)
+    }
+  }
+}
+
 export async function generateViaAPImart(opts: {
   model: APImartModel
   prompt: string
@@ -130,6 +280,12 @@ export async function generateViaAPImart(opts: {
   n: number
   imageBlobs?: Blob[]
 }): Promise<Blob[]> {
+  // 安全网：MJ 走专用端点（retry 等旁路也能正确落到 MJ）
+  if (opts.model === 'midjourney') {
+    const { blobs } = await generateMidjourneyViaAPImart({ prompt: opts.prompt, size: opts.size })
+    return blobs
+  }
+
   const apiKey = getApiKey('apimart')
   if (!apiKey) {
     throw new Error(missingApiKeyMessage('apimart'))
@@ -160,133 +316,51 @@ export async function generateViaAPImart(opts: {
     )
   }
 
-  const submitResp = await fetch(`${base}/images/generations`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(submitBody),
-  })
+  const taskId = await submitApimartTask(`${base}/images/generations`, apiKey, submitBody, 'apimart')
+  const urls = await pollApimartTaskUrls(base, apiKey, taskId, opts.n, 'apimart')
+  console.log('[apimart] completed, downloading', urls.length, 'images')
+  return Promise.all(urls.map((u) => downloadGeneratedAsset(u, 'apimart')))
+}
 
-  if (submitResp.status === 401 || submitResp.status === 403) {
-    throw new Error(invalidApiKeyMessage('apimart'))
+/**
+ * Midjourney（APImart 专用端点）：出 2×2 网格图（一张），比例经 `--ar` 拼进 prompt。
+ * 返回 taskId 供后续 upscale（U1-U4）。不支持参考图。
+ */
+export async function generateMidjourneyViaAPImart(opts: {
+  prompt: string
+  size: string
+}): Promise<{ blobs: Blob[]; taskId: string }> {
+  const apiKey = getApiKey('apimart')
+  if (!apiKey) {
+    throw new Error(missingApiKeyMessage('apimart'))
   }
+  const base = apimartBaseURL()
+  const hasAr = /--ar\s+\d/.test(opts.prompt)
+  const prompt = hasAr || !opts.size ? opts.prompt : `${opts.prompt} --ar ${opts.size}`
 
-  const submitText = await submitResp.text()
-  let submitData: unknown
-  try {
-    submitData = JSON.parse(submitText) as Record<string, unknown>
-  } catch {
-    throw new Error(`[apimart/submit] invalid JSON ${submitResp.status}`)
+  const taskId = await submitApimartTask(`${base}/midjourney/generations`, apiKey, { prompt }, 'mj')
+  const urls = await pollApimartTaskUrls(base, apiKey, taskId, 1, 'mj')
+  console.log('[mj] completed, downloading', urls.length, 'images')
+  const blobs = await Promise.all(urls.map((u) => downloadGeneratedAsset(u, 'mj')))
+  return { blobs, taskId }
+}
+
+/** Midjourney 放大网格第 index 张（1-4），返回放大后的单图。 */
+export async function upscaleMidjourneyViaAPImart(opts: {
+  taskId: string
+  index: 1 | 2 | 3 | 4
+}): Promise<Blob> {
+  const apiKey = getApiKey('apimart')
+  if (!apiKey) {
+    throw new Error(missingApiKeyMessage('apimart'))
   }
-
-  const errObj = (submitData as { error?: { message?: string } }).error
-  if (errObj) {
-    const msg = errObj.message ?? JSON.stringify(errObj)
-    console.error('[apimart] error →', msg)
-    throw new Error(`[apimart/submit] ${msg}`)
-  }
-  if (!submitResp.ok) {
-    console.error('[apimart] error →', submitText)
-    throw new Error(`[apimart/submit] HTTP ${submitResp.status}`)
-  }
-
-  const sub = submitData as { code?: number; error?: { message?: string } }
-  const code = sub.code
-  if (code !== undefined && code !== 0 && code !== 200) {
-    throw new Error(`[apimart/submit] code ${code}: ${sub.error?.message ?? ''}`)
-  }
-
-  const data = (submitData as { data?: unknown }).data
-  const taskId =
-    Array.isArray(data) && data[0] && typeof (data[0] as { task_id?: string }).task_id === 'string'
-      ? (data[0] as { task_id: string }).task_id
-      : data &&
-          typeof data === 'object' &&
-          'task_id' in data &&
-          typeof (data as { task_id: string }).task_id === 'string'
-        ? (data as { task_id: string }).task_id
-        : undefined
-
-  if (!taskId) {
-    console.error('[apimart] error → missing task_id', submitData)
-    throw new Error('[apimart/submit] missing task_id')
-  }
-
-  console.log('[apimart] submitted task=', taskId)
-
-  const startTime = Date.now()
-
-  while (true) {
-    if (Date.now() - startTime > TIMEOUT_MS) {
-      console.error('[apimart] error → timeout')
-      throw new Error('[apimart/poll] timeout after 3 minutes')
-    }
-
-    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
-
-    const statusResp = await fetch(`${base}/tasks/${taskId}`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    })
-
-    if (statusResp.status === 401 || statusResp.status === 403) {
-      throw new Error(invalidApiKeyMessage('apimart'))
-    }
-    const statusText = await statusResp.text()
-    let statusData: Record<string, unknown>
-    try {
-      statusData = JSON.parse(statusText) as Record<string, unknown>
-    } catch {
-      console.error('[apimart] error → invalid poll JSON', statusText)
-      throw new Error(`[apimart/poll] invalid JSON ${statusResp.status}`)
-    }
-
-    const pollBody = statusData as { code?: number; error?: { message?: string } }
-    const pollCode = pollBody.code
-    if (pollCode !== undefined && pollCode !== 0 && pollCode !== 200) {
-      throw new Error(`[apimart/poll] code ${pollCode}: ${pollBody.error?.message ?? ''}`)
-    }
-
-    const pollErr = statusData.error as { message?: string } | undefined
-    if (pollErr) {
-      const msg = pollErr.message ?? JSON.stringify(pollErr)
-      console.error('[apimart] error →', msg)
-      throw new Error(`[apimart/poll] ${msg}`)
-    }
-
-    const payload = statusData.data as
-      | {
-          status?: string
-          progress?: number
-          result?: { images?: Array<{ url?: string | string[] } | { url: string }> }
-        }
-      | undefined
-
-    const status = payload?.status ?? ''
-    const progress = payload?.progress
-    console.log('[apimart] poll status=', status, 'progress=', progress)
-
-    // 放宽完成判定（video 同款修法）：APImart 有时卡在 processing 99% 不翻 completed，但结果已出。
-    // n>1 时可能中途出现部分 URL，故只有「状态完成 / URL 数够 n / progress 100 且有 URL」才算成。
-    const statusLc = status.toLowerCase()
-    const urls = extractImageUrlsFromPollPayload(payload)
-    const isDoneStatus = ['completed', 'succeeded', 'success', 'done', 'finished'].includes(statusLc)
-    const isDone =
-      isDoneStatus || urls.length >= opts.n || (urls.length > 0 && (progress ?? 0) >= 100)
-
-    if (isDone) {
-      if (urls.length === 0) {
-        console.error('[apimart] error → completed but no image URL', statusData)
-        throw new Error('[apimart/completed] no image URL in response')
-      }
-      console.log('[apimart] completed, downloading', urls.length, 'images')
-      return Promise.all(urls.map((u) => downloadGeneratedAsset(u, 'apimart')))
-    }
-
-    if (['failed', 'error', 'cancelled', 'canceled'].includes(statusLc)) {
-      console.error('[apimart] error → task', status)
-      throw new Error(`[apimart] task ${status}`)
-    }
-  }
+  const base = apimartBaseURL()
+  const upscaleTaskId = await submitApimartTask(
+    `${base}/midjourney/generations/upscale`,
+    apiKey,
+    { task_id: opts.taskId, index: opts.index },
+    'mj/upscale',
+  )
+  const urls = await pollApimartTaskUrls(base, apiKey, upscaleTaskId, 1, 'mj/upscale')
+  return downloadGeneratedAsset(urls[0], 'mj/upscale')
 }

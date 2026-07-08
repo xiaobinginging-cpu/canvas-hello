@@ -1,6 +1,7 @@
 import { Download, FolderPlus, Info, RotateCcw } from 'lucide-react'
 import { downloadObjectUrl } from '../../lib/downloadObjectUrl.ts'
 import { coerceApimartModelId } from '../../lib/apimartGen.ts'
+import { runMidjourneyUpscale } from '../../lib/canvasGeneration.ts'
 import {
   coerceImageGenRatio,
   coerceImageGenResolution,
@@ -88,6 +89,23 @@ export default function ImageToolbar({
       >
         <Info size={16} strokeWidth={2} aria-hidden />
       </button>
+      {image.metadata.mjTaskId ? (
+        <>
+          <div className="mx-0.5 h-5 w-px self-center bg-neutral-200" aria-hidden />
+          {([1, 2, 3, 4] as const).map((i) => (
+            <button
+              key={i}
+              type="button"
+              title={`放大网格第 ${i} 张（Midjourney upscale）`}
+              disabled={image.isLoading || image.src === 'pending'}
+              className="rounded px-1.5 py-1 text-[11px] font-medium text-neutral-900 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40"
+              onClick={() => void runMidjourneyUpscale(image.id, i)}
+            >
+              U{i}
+            </button>
+          ))}
+        </>
+      ) : null}
     </div>
   )
 }

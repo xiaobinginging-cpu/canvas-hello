@@ -89,6 +89,12 @@ export interface ImageMetadata {
    * 见 `types/library.ts` {@link import('./library').LibraryMaterial}。
    */
   libraryMaterialId?: string
+
+  /**
+   * Midjourney（APImart）网格图的生成任务 id；图片工具栏 U1-U4 放大按钮据此调 upscale。
+   * 仅 `model === 'midjourney'` 的生成图携带。
+   */
+  mjTaskId?: string
 }
 
 /**

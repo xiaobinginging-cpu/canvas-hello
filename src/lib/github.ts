@@ -897,28 +897,12 @@ export async function listProjects(): Promise<ProjectMeta[]> {
 }
 
 async function listProjectsUncached(): Promise<ProjectMeta[]> {
+  // GitHub 时代的旧项目均为测试数据（用户已确认不迁移），列表只看 R2，不再合并两侧
   if (r2PublicReadConfigured()) {
-    let r2List: ProjectMeta[] | null = null
     try {
-      r2List = await listProjectsFromR2()
+      return await listProjectsFromR2()
     } catch (e) {
       console.warn('[r2] listProjects failed, falling back to GitHub', e)
-    }
-    if (r2List) {
-      // 过渡期：GitHub 时代的旧项目可能还没迁到 R2——有 PAT 时合并两侧（同 id 以 R2 为准），
-      // 否则旧项目会从首页"消失"（直输 URL 才能打开）
-      if (isAuthenticated()) {
-        try {
-          const ghList = await listProjectsFromGitHub()
-          const seen = new Set(r2List.map((m) => m.id))
-          const merged = [...r2List, ...ghList.filter((m) => !seen.has(m.id))]
-          merged.sort((a, b) => b.updatedAt - a.updatedAt)
-          return merged
-        } catch (e) {
-          console.warn('[github] merge legacy project list failed (ignored)', e)
-        }
-      }
-      return r2List
     }
   }
   return listProjectsFromGitHub()

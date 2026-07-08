@@ -5,7 +5,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
  * （getapib.org），浏览器直连被拒——服务端拉取后流式回传。
  * 仅放行 APImart 已知结果域名，防 SSRF。
  */
-const ALLOWED_HOST_SUFFIXES = ['apimart.ai', 'getapib.org']
+const ALLOWED_HOST_SUFFIXES = ['apimart.ai', 'getapib.org', 'cdn.midjourney.com']
 
 function hostAllowed(hostname: string): boolean {
   return ALLOWED_HOST_SUFFIXES.some((s) => hostname === s || hostname.endsWith(`.${s}`))

@@ -80,6 +80,10 @@ export default function ImageGenPanel({
   const promptHasContent = imageGenConfig.prompt.trim() !== ''
   const apiKeyOk =
     imageGenConfig.api === 'google' ? hasApiKey('google') : hasApiKey('apimart')
+  /** MJ 固定出 1 张 2×2 网格图，数量/分辨率参数不适用（比例经 --ar 生效）。 */
+  const isMJ =
+    imageGenConfig.api === 'apimart' &&
+    coerceApimartModelId(imageGenConfig.model) === 'midjourney'
 
   function removeRef(id: string): void {
     updateImageGenConfig({
@@ -148,7 +152,9 @@ export default function ImageGenPanel({
             <label className="flex items-center gap-1 text-xs text-neutral-600">
               分辨率
               <select
-                className="min-w-[120px] rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900"
+                className="min-w-[120px] rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={isMJ}
+                title={isMJ ? 'Midjourney 不支持分辨率档位' : undefined}
                 value={imageGenConfig.resolution}
                 onChange={(e) =>
                   updateImageGenConfig({
@@ -167,8 +173,10 @@ export default function ImageGenPanel({
             <label className="flex items-center gap-1 text-xs text-neutral-600">
               数量
               <select
-                className="min-w-[120px] rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900"
-                value={imageGenConfig.count}
+                className="min-w-[120px] rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={isMJ}
+                title={isMJ ? 'Midjourney 固定一次出 1 张 2×2 网格图，可在图上 U1-U4 放大' : undefined}
+                value={isMJ ? 1 : imageGenConfig.count}
                 onChange={(e) =>
                   updateImageGenConfig({ count: Number(e.target.value) as 1 | 2 | 4 })
                 }

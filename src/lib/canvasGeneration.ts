@@ -3,7 +3,12 @@ import type { Image } from '../types/image.ts'
 import type { VideoItem } from '../types/project.ts'
 import type { APImartVideoModel, VideoModel, VideoQuality } from '../types/video.ts'
 import { videoProviderForModel } from '../types/video.ts'
-import { coerceApimartModelId, generateViaAPImart } from './apimartGen.ts'
+import {
+  coerceApimartModelId,
+  generateMidjourneyViaAPImart,
+  generateViaAPImart,
+  upscaleMidjourneyViaAPImart,
+} from './apimartGen.ts'
 import { generateVideoViaAPImart } from './apimartVideoGen.ts'
 import { generateVideoViaDashScope } from './dashscopeVideoGen.ts'
 import { generateOneImage, pixelSizeFromRatioAndResolution } from './ai.ts'
@@ -359,7 +364,16 @@ export async function retryCanvasImageGeneration(imageId: string): Promise<void>
 
   try {
     let blob: Blob
-    if (api === 'apimart') {
+    if (api === 'apimart' && coerceApimartModelId(model) === 'midjourney') {
+      // MJ 重试要拿新 taskId 刷进元数据，否则 U1-U4 放大的还是旧网格
+      const { blobs, taskId } = await generateMidjourneyViaAPImart({ prompt, size: ratio })
+      const b = blobs[0]
+      if (!b || b.size === 0) throw new Error('[mj] empty result on retry')
+      blob = b
+      const st2 = useProjectStore.getState()
+      const prevMeta = st2.currentProjectCanvas?.images.find((i) => i.id === imageId)?.metadata
+      if (prevMeta) st2.patchImage(imageId, { metadata: { ...prevMeta, mjTaskId: taskId } })
+    } else if (api === 'apimart') {
       const imageBlobs = refBlobs?.map((r) => r.blob)
       const blobs = await generateViaAPImart({
         model: coerceApimartModelId(model),
@@ -394,6 +408,55 @@ export async function retryCanvasImageGeneration(imageId: string): Promise<void>
   }
 }
 
+/** Midjourney 放大网格第 index 张：在源图右侧放占位卡 → upscale → 走常规落库。 */
+export async function runMidjourneyUpscale(sourceImageId: string, index: 1 | 2 | 3 | 4): Promise<void> {
+  const st = useProjectStore.getState()
+  const projectId = st.currentProjectId
+  const src = st.currentProjectCanvas?.images.find((i) => i.id === sourceImageId)
+  const mjTaskId = src?.metadata.mjTaskId
+  if (!projectId || !src || !mjTaskId) return
+
+  const imgId = nanoid()
+  const placeholder: Image = {
+    id: imgId,
+    src: 'pending',
+    position: {
+      x: src.position.x + src.size.w + 30,
+      y: src.position.y + (index - 1) * CASCADE_STEP,
+    },
+    size: { w: src.size.w, h: src.size.h },
+    source: 'generated',
+    metadata: {
+      prompt: src.metadata.prompt,
+      api: 'apimart',
+      model: 'midjourney',
+      ratio: src.metadata.ratio,
+      parents: [sourceImageId],
+      generatedAt: Date.now(),
+    },
+    isLoading: true,
+    cancelable: false,
+  }
+  st.addImage(placeholder)
+  console.log(`[mj/upscale] start task=${mjTaskId} index=${index}`)
+
+  try {
+    const blob = await upscaleMidjourneyViaAPImart({ taskId: mjTaskId, index })
+    if (!blob || blob.size === 0) throw new Error('[mj/upscale] empty result')
+    const filename = assetFilenameForGeneratedImage(imgId, blob)
+    await uploadGeneratedBlob(projectId, imgId, blob, filename)
+    console.log('[mj/upscale] all done')
+  } catch (e) {
+    const details = e instanceof Error ? e.message : String(e)
+    console.error('[mj/upscale] error →', details)
+    useProjectStore.getState().patchImage(imgId, {
+      isLoading: false,
+      cancelable: false,
+      uploadError: details,
+    })
+  }
+}
+
 export async function runCanvasImageGeneration(params: {
   viewportEl: HTMLElement | null
   prompt: string
@@ -425,8 +488,12 @@ export async function runCanvasImageGeneration(params: {
   const baseSize = pixelSizeFromRatioAndResolution(ratio, resolution)
   const imageCountAtStart = canvas.images.length
 
+  // Midjourney 固定一次出 1 张 2×2 网格图（数量/分辨率/参考图参数均不适用）
+  const isMJ = api === 'apimart' && coerceApimartModelId(model) === 'midjourney'
+  const effCount = isMJ ? 1 : count
+
   const placeholderIds: string[] = []
-  for (let i = 0; i < count; i++) {
+  for (let i = 0; i < effCount; i++) {
     const imgId = nanoid()
     placeholderIds.push(imgId)
     const stagger = (imageCountAtStart + i) * CASCADE_STEP
@@ -467,7 +534,7 @@ export async function runCanvasImageGeneration(params: {
   }
 
   let refBlobs: { blob: Blob; mimeType: string }[] | undefined
-  if (referenceImageIds.length > 0) {
+  if (referenceImageIds.length > 0 && !isMJ) {
     try {
       refBlobs = await collectReferenceBlobs(referenceImageIds)
     } catch (e) {
@@ -492,7 +559,32 @@ export async function runCanvasImageGeneration(params: {
 
   let outcomes: Outcome[]
 
-  if (api === 'apimart') {
+  if (isMJ) {
+    const imgId = placeholderIds[0]
+    try {
+      const { blobs, taskId } = await generateMidjourneyViaAPImart({
+        prompt: promptTrim,
+        size: ratio,
+      })
+      const blob = blobs[0]
+      if (!blob || blob.size === 0) throw new Error('[mj] empty result')
+      // taskId 落到元数据，工具栏 U1-U4 放大按钮据此调 upscale
+      const stMj = useProjectStore.getState()
+      const prevMeta = stMj.currentProjectCanvas?.images.find((im) => im.id === imgId)?.metadata
+      if (prevMeta) stMj.patchImage(imgId, { metadata: { ...prevMeta, mjTaskId: taskId } })
+      outcomes = [{ kind: 'blob' as const, imgId, blob }]
+    } catch (e) {
+      const details = e instanceof Error ? e.message : String(e)
+      console.error('[mj] error →', details)
+      genAbort.delete(imgId)
+      useProjectStore.getState().patchImage(imgId, {
+        isLoading: false,
+        cancelable: false,
+        uploadError: details,
+      })
+      outcomes = [{ kind: 'fail' as const, imgId }]
+    }
+  } else if (api === 'apimart') {
     const imageBlobs = refBlobs?.map((r) => r.blob)
     try {
       const blobs = await generateViaAPImart({
