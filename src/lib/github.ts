@@ -37,7 +37,7 @@ function invalidateProjectCaches(id?: string): void {
 
 // ─── Cloudflare R2 (writes via Vercel `/api/r2-*`; secrets stay server-side) ─
 
-function r2PublicReadConfigured(): boolean {
+export function r2PublicReadConfigured(): boolean {
   const u = import.meta.env.VITE_R2_PUBLIC_URL
   return typeof u === 'string' && u.trim().length > 0
 }
@@ -392,6 +392,14 @@ export function clearToken(): void {
 
 export function isAuthenticated(): boolean {
   return Boolean(getToken())
+}
+
+/**
+ * 存储后端是否可用：R2 配置了即可用；GitHub PAT 只在无 R2 时必需（旧 BYO-token 形态）。
+ * UI 门禁（首页/素材库/侧栏同步）应该用这个，而不是 isAuthenticated——否则 R2-only 用户被 PATSetup 挡在门外。
+ */
+export function storageReady(): boolean {
+  return r2PublicReadConfigured() || isAuthenticated()
 }
 
 /** Cached GitHub username after successful PAT validation (`GET /user`). */
@@ -889,14 +897,35 @@ export async function listProjects(): Promise<ProjectMeta[]> {
 }
 
 async function listProjectsUncached(): Promise<ProjectMeta[]> {
-  const octokit = await getAuthenticatedOctokit()
   if (r2PublicReadConfigured()) {
+    let r2List: ProjectMeta[] | null = null
     try {
-      return await listProjectsFromR2()
+      r2List = await listProjectsFromR2()
     } catch (e) {
       console.warn('[r2] listProjects failed, falling back to GitHub', e)
     }
+    if (r2List) {
+      // 过渡期：GitHub 时代的旧项目可能还没迁到 R2——有 PAT 时合并两侧（同 id 以 R2 为准），
+      // 否则旧项目会从首页"消失"（直输 URL 才能打开）
+      if (isAuthenticated()) {
+        try {
+          const ghList = await listProjectsFromGitHub()
+          const seen = new Set(r2List.map((m) => m.id))
+          const merged = [...r2List, ...ghList.filter((m) => !seen.has(m.id))]
+          merged.sort((a, b) => b.updatedAt - a.updatedAt)
+          return merged
+        } catch (e) {
+          console.warn('[github] merge legacy project list failed (ignored)', e)
+        }
+      }
+      return r2List
+    }
   }
+  return listProjectsFromGitHub()
+}
+
+async function listProjectsFromGitHub(): Promise<ProjectMeta[]> {
+  const octokit = await getAuthenticatedOctokit()
   await ensureRepoGithub()
   const owner = await getOwnerLogin(octokit)
   const branch = await getRepoBranch(octokit, owner)
@@ -933,7 +962,6 @@ async function listProjectsUncached(): Promise<ProjectMeta[]> {
 
 /** Loads `meta.json` + `canvas.json` only (assets are loaded via {@link fetchAsset}). */
 export async function loadProject(id: string): Promise<LoadedProject> {
-  const octokit = await getAuthenticatedOctokit()
   if (r2PublicReadConfigured()) {
     try {
       return await loadProjectFromR2(id)
@@ -941,6 +969,8 @@ export async function loadProject(id: string): Promise<LoadedProject> {
       console.warn('[r2] loadProject failed, falling back to GitHub', e)
     }
   }
+  // PAT 校验只属于 GitHub 分支——放在 R2 分支之前会让 R2-only 部署直接抛 Reauth
+  const octokit = await getAuthenticatedOctokit()
   await ensureRepoGithub()
   const owner = await getOwnerLogin(octokit)
   const branch = await getRepoBranch(octokit, owner)
@@ -974,7 +1004,6 @@ export async function fetchProjectCanvas(projectId: string): Promise<CanvasData>
 }
 
 async function fetchProjectCanvasUncached(projectId: string): Promise<CanvasData> {
-  const octokit = await getAuthenticatedOctokit()
   if (r2PublicReadConfigured()) {
     try {
       return await fetchProjectCanvasFromR2(projectId)
@@ -982,6 +1011,7 @@ async function fetchProjectCanvasUncached(projectId: string): Promise<CanvasData
       console.warn('[r2] fetchProjectCanvas failed, falling back to GitHub', e)
     }
   }
+  const octokit = await getAuthenticatedOctokit()
   await ensureRepoGithub()
   const owner = await getOwnerLogin(octokit)
   const branch = await getRepoBranch(octokit, owner)
@@ -1144,12 +1174,9 @@ async function flushSavePreferR2(projectId: string, payload: PendingPayload): Pr
     await flushSaveToGitHub(projectId, payload)
     return
   }
-  try {
-    await flushSaveToR2(projectId, payload)
-  } catch (e) {
-    console.warn('[r2/save] R2 path failed, falling back to GitHub', e)
-    await flushSaveToGitHub(projectId, payload)
-  }
+  // R2 失败不再写 GitHub 兜底：读路径 R2-first 读不到 GitHub 上的那份，会脑裂
+  // （刷新后"消失"，下次基于 R2 旧快照保存直接覆盖）。抛出让 persistFailedSave 入队重试 R2。
+  await flushSaveToR2(projectId, payload)
 }
 
 async function flushSaveToGitHub(projectId: string, payload: PendingPayload): Promise<void> {
@@ -1314,7 +1341,8 @@ async function persistPendingQueueItem(item: PendingItem): Promise<void> {
 
 /** Flushes queued saves/deletes (e.g. after auth or when `online`). */
 export async function syncPendingFromStorage(): Promise<void> {
-  if (!isAuthenticated()) return
+  // flush 本体走 flushSavePreferR2（R2 优先），R2 可用时不需要 PAT
+  if (!storageReady()) return
 
   const items = readPendingQueue().items
   if (items.length === 0) return
@@ -1355,6 +1383,8 @@ if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
     void syncPendingFromStorage()
   })
+  // 启动补一次 flush：上次会话离线入队、本次一直在线的话，原来没有任何触发点
+  void syncPendingFromStorage().catch(() => {})
 }
 
 /** Deletes `project-{id}/` (all nested files). Commit per file (GitHub Contents API). */
@@ -1698,12 +1728,10 @@ export async function saveLibrary(
 ): Promise<void> {
   cacheLibrary = data // 写的就是新真相，缓存直接更新，下次 loadLibrary 即时且正确
   if (r2PublicReadConfigured()) {
-    try {
-      await flushLibraryToR2(data, newAssets)
-      return
-    } catch (e) {
-      console.warn('[r2/library] save failed, falling back to GitHub', e)
-    }
+    // 不写 GitHub 兜底：library.json 是"读-改-写回"整文件，R2 读不到 GitHub 上那份，
+    // 下次基于 R2 旧快照保存会覆盖掉这次追加（丢素材）。失败直接抛给调用方提示。
+    await flushLibraryToR2(data, newAssets)
+    return
   }
   await flushLibraryToGitHub(data, newAssets)
 }
@@ -1895,19 +1923,16 @@ export async function saveChat(
 ): Promise<void> {
   const json = `${JSON.stringify(data, null, 2)}\n`
   if (r2PublicReadConfigured()) {
-    try {
-      for (const asset of newAssets) {
-        if (!asset.blob || asset.blob.size === 0) continue
-        await r2UploadViaApi(chatKey('assets', asset.name.replace(/^\/+/, '')), asset.blob)
-      }
-      await r2UploadViaApi(
-        chatKey(chatJsonName(projectId)),
-        new Blob([json], { type: 'application/json' }),
-      )
-      return
-    } catch (e) {
-      console.warn('[r2/chat] save failed, falling back to GitHub', e)
+    // 同 saveLibrary：chat json 是整文件覆盖写，R2 失败时写 GitHub 会脑裂丢会话，直接抛
+    for (const asset of newAssets) {
+      if (!asset.blob || asset.blob.size === 0) continue
+      await r2UploadViaApi(chatKey('assets', asset.name.replace(/^\/+/, '')), asset.blob)
     }
+    await r2UploadViaApi(
+      chatKey(chatJsonName(projectId)),
+      new Blob([json], { type: 'application/json' }),
+    )
+    return
   }
   await flushChatToGitHub(projectId, data, newAssets)
 }

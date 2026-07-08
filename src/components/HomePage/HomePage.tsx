@@ -39,7 +39,7 @@ export default function HomePage() {
   const clearAuth = useProjectStore((s) => s.clearAuth)
 
   const [loadPhase, setLoadPhase] = useState<'idle' | 'loading' | 'error'>(() =>
-    github.isAuthenticated() ? 'loading' : 'idle',
+    github.storageReady() ? 'loading' : 'idle',
   )
   const [loadError, setLoadError] = useState<string | null>(null)
   const [newOpen, setNewOpen] = useState(false)
@@ -75,7 +75,8 @@ export default function HomePage() {
 
   useEffect(() => {
     syncAuthFromGithub()
-    if (!github.isAuthenticated()) return
+    // R2 配置了就能读，GitHub PAT 只是旧形态的要求
+    if (!github.storageReady()) return
     queueMicrotask(() => {
       void loadLibrary()
     })
@@ -234,7 +235,8 @@ export default function HomePage() {
     )
   }
 
-  if (!isAuthenticated) {
+  // R2 已配置时不再强制 GitHub PAT（PATSetup 只属于旧 BYO-token 形态）
+  if (!isAuthenticated && !github.storageReady()) {
     return (
       <div className="min-h-svh bg-[#FAF8F5] font-mono text-neutral-900">
         <PATSetup onConnected={() => void loadLibrary()} />

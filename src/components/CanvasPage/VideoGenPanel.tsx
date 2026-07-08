@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { APIMART_VIDEO_MODEL_OPTIONS } from '../../lib/apimartVideoGen.ts'
 import { hasApiKey, missingApiKeyMessage } from '../../lib/apiKeys.ts'
 import { runCanvasVideoGeneration } from '../../lib/canvasGeneration.ts'
-import { getGithubLogin, getRawAssetUrl } from '../../lib/github.ts'
+import { getGithubLogin, getRawAssetUrl, r2PublicReadConfigured } from '../../lib/github.ts'
 import { useProjectStore, type VideoGenRatio } from '../../store/useStore.ts'
 import {
   videoProviderForModel,
@@ -86,7 +86,8 @@ function durationsForModel(model: VideoModel): readonly number[] {
 /** 视频参考须已是 GitHub assets；pending / loading 拒绝 */
 function validateVideoReferenceIds(refIds: string[]): string | null {
   if (refIds.length === 0) return null
-  if (!getGithubLogin()) {
+  // R2 模式下参考图 URL 是 R2 公共地址，不需要 GitHub 登录
+  if (!r2PublicReadConfigured() && !getGithubLogin()) {
     return '图生视频需已登录 GitHub（用于生成参考图 raw URL）'
   }
   const projectId = useProjectStore.getState().currentProjectId

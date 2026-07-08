@@ -31,7 +31,7 @@ export default function AssetLibraryPage() {
   const syncAuthFromGithub = useProjectStore((s) => s.syncAuthFromGithub)
 
   const [phase, setPhase] = useState<'idle' | 'loading' | 'error'>(() =>
-    github.isAuthenticated() ? 'loading' : 'idle',
+    github.storageReady() ? 'loading' : 'idle',
   )
   const [error, setError] = useState<string | null>(null)
   const [materials, setMaterials] = useState<LibraryMaterial[]>([])
@@ -58,7 +58,7 @@ export default function AssetLibraryPage() {
 
   useEffect(() => {
     syncAuthFromGithub()
-    if (!github.isAuthenticated()) return
+    if (!github.storageReady()) return
     queueMicrotask(() => {
       void load()
     })
@@ -123,7 +123,7 @@ export default function AssetLibraryPage() {
     }
   }
 
-  if (!isAuthenticated && !github.isAuthenticated()) {
+  if (!isAuthenticated && !github.storageReady()) {
     return (
       <div className="flex h-svh flex-col items-center justify-center gap-4 bg-[#FAF8F5] font-mono text-neutral-900">
         <p className="text-sm text-neutral-600">请先登录后再查看素材库</p>

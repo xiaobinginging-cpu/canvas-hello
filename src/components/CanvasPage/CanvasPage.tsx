@@ -84,7 +84,7 @@ export default function CanvasPage() {
 
   /** Keep sidebar list aligned with GitHub when opening canvas directly. */
   useEffect(() => {
-    if (!github.isAuthenticated()) return
+    if (!github.storageReady()) return
     void (async () => {
       try {
         await github.ensureRepo()
