@@ -149,7 +149,12 @@ async function uploadGeneratedVideoBlob(
   console.log('[video/gen/finalize]', videoId, 'isLoading=false', `src=assets/${assetFilename}`)
 
   const st1 = useProjectStore.getState()
-  await github.saveProject(projectId, st1.currentProjectMeta!, st1.currentProjectCanvas!, [
+  if (st1.currentProjectId !== projectId || !st1.currentProjectMeta || !st1.currentProjectCanvas) {
+    console.warn('[video/gen] project changed during generation, skip commit')
+    genAbort.delete(videoId)
+    return
+  }
+  await github.saveProject(projectId, st1.currentProjectMeta, st1.currentProjectCanvas, [
     { name: assetFilename, blob },
   ])
   genAbort.delete(videoId)
@@ -253,7 +258,18 @@ export async function runCanvasVideoGeneration(params: {
 
   let imageRawUrls: string[] | undefined
   if (provider === 'apimart' && refIds.length > 0) {
-    imageRawUrls = collectVideoReferenceRawUrls(projectId, refIds)
+    try {
+      imageRawUrls = collectVideoReferenceRawUrls(projectId, refIds)
+    } catch (e) {
+      const details = e instanceof Error ? e.message : String(e)
+      console.error('[video/gen] ref error →', details)
+      useProjectStore.getState().patchVideo(videoId, {
+        isLoading: false,
+        cancelable: false,
+        uploadError: details,
+      })
+      return
+    }
   }
 
   try {
@@ -310,7 +326,12 @@ async function uploadGeneratedBlob(
   console.log('[gen/finalize]', imageId, 'isLoading=false', `src=assets/${assetFilename}`)
 
   const st1 = useProjectStore.getState()
-  await github.saveProject(projectId, st1.currentProjectMeta!, st1.currentProjectCanvas!, [
+  if (st1.currentProjectId !== projectId || !st1.currentProjectMeta || !st1.currentProjectCanvas) {
+    console.warn('[image/gen] project changed during generation, skip commit')
+    genAbort.delete(imageId)
+    return
+  }
+  await github.saveProject(projectId, st1.currentProjectMeta, st1.currentProjectCanvas, [
     { name: assetFilename, blob },
   ])
   genAbort.delete(imageId)
@@ -445,8 +466,24 @@ export async function runCanvasImageGeneration(params: {
     genAbort.set(imgId, new AbortController())
   }
 
-  const refBlobs =
-    referenceImageIds.length > 0 ? await collectReferenceBlobs(referenceImageIds) : undefined
+  let refBlobs: { blob: Blob; mimeType: string }[] | undefined
+  if (referenceImageIds.length > 0) {
+    try {
+      refBlobs = await collectReferenceBlobs(referenceImageIds)
+    } catch (e) {
+      const details = e instanceof Error ? e.message : String(e)
+      console.error('[image/gen] ref error →', details)
+      for (const imgId of placeholderIds) {
+        genAbort.delete(imgId)
+        useProjectStore.getState().patchImage(imgId, {
+          isLoading: false,
+          cancelable: false,
+          uploadError: details,
+        })
+      }
+      return
+    }
+  }
 
   type Outcome =
     | { kind: 'blob'; imgId: string; blob: Blob }
@@ -536,7 +573,13 @@ export async function runCanvasImageGeneration(params: {
       continue
     }
     if (!blob || blob.size === 0) {
-      throw new Error(`empty blob: img-${imgId}`)
+      genAbort.delete(imgId)
+      useProjectStore.getState().patchImage(imgId, {
+        isLoading: false,
+        cancelable: false,
+        uploadError: `empty blob: img-${imgId}`,
+      })
+      continue
     }
     prepared.push({
       imgId,
@@ -565,11 +608,24 @@ export async function runCanvasImageGeneration(params: {
     console.log('[gen/finalize]', imgId, 'isLoading=false', `src=assets/${name}`)
   }
 
+  // 生成耗时几十秒，期间可能已切项目/回首页——绝不能把 null 或别的项目的画布写进原项目
   const stFinal = useProjectStore.getState()
+  if (
+    stFinal.currentProjectId !== projectId ||
+    !stFinal.currentProjectMeta ||
+    !stFinal.currentProjectCanvas
+  ) {
+    console.warn('[image/gen] project changed during generation, skip commit')
+    return
+  }
+  if (newAssets.length === 0) {
+    console.log('[image/gen] no successful assets, skip commit')
+    return
+  }
   await github.saveProject(
     projectId,
-    stFinal.currentProjectMeta!,
-    stFinal.currentProjectCanvas!,
+    stFinal.currentProjectMeta,
+    stFinal.currentProjectCanvas,
     newAssets,
   )
 

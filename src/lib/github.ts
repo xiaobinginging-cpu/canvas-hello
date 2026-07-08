@@ -147,10 +147,11 @@ async function r2DeletePrefix(prefix: string): Promise<void> {
   }
 }
 
+// 资产文件名带 nanoid、内容不可变 → 放心吃 HTTP 缓存（meta/canvas/library 等可变 JSON 仍走 no-store）
 async function r2FetchBlobFromPublicThenApi(key: string, mime: string): Promise<Blob | null> {
   try {
     const url = r2PublicUrlForKey(key)
-    const res = await fetch(url, { credentials: 'omit', cache: 'no-store' })
+    const res = await fetch(url, { credentials: 'omit', cache: 'force-cache' })
     if (res.ok) {
       const b = await res.blob()
       if (b.size > 0) return b
@@ -159,7 +160,7 @@ async function r2FetchBlobFromPublicThenApi(key: string, mime: string): Promise<
     /* fall through */
   }
   const qs = new URLSearchParams({ key })
-  const res2 = await fetch(`/api/r2-fetch?${qs.toString()}`, { cache: 'no-store' })
+  const res2 = await fetch(`/api/r2-fetch?${qs.toString()}`, { cache: 'force-cache' })
   if (!res2.ok) return null
   const buf = await res2.arrayBuffer()
   return new Blob([buf], { type: mime })
@@ -1068,6 +1069,10 @@ export async function saveProject(
   canvas: CanvasData,
   newAssets?: { name: string; blob: Blob }[],
 ): Promise<void> {
+  // 调用方在 async 间隙后可能拿到已清空的 store 快照——写 null 会摧毁远端 meta/canvas
+  if (!meta || !canvas) {
+    throw new Error(`[save] refusing to write null meta/canvas for project ${id}`)
+  }
   invalidateProjectCaches(id)
   // 该 project 缩略图来源就是它的 canvas——存了直接更新缓存，省下一次重拉。
   cacheProjectCanvas.set(id, canvas)

@@ -21,7 +21,6 @@ function VideoItem({ video }: { video: CanvasVideo }) {
   const selectedVideoId = useProjectStore((s) => s.selectedVideoId)
   const objectUrl = useProjectStore((s) => s.videoObjectUrls.get(video.id))
   const updateVideoBounds = useProjectStore((s) => s.updateVideoBounds)
-  const patchVideoBoundsLive = useProjectStore((s) => s.patchVideoBoundsLive)
   const setSelectedVideo = useProjectStore((s) => s.setSelectedVideo)
   const canvasScale = useProjectStore((s) => s.canvasScale)
   const isCanvasSelectionMode = useProjectStore((s) => s.isCanvasSelectionMode)
@@ -125,14 +124,7 @@ function VideoItem({ video }: { video: CanvasVideo }) {
         })
         schedulePersistCanvas(projectId, 500)
       }}
-      onResize={(_e, _dir, ref, _delta, position) => {
-        patchVideoBoundsLive(video.id, {
-          x: position.x,
-          y: position.y,
-          width: parseFloat(ref.style.width),
-          height: parseFloat(ref.style.height),
-        })
-      }}
+      /* 拖拽/缩放期间不回写 store——逐帧 set() 会让整棵 Canvas 树重渲染（对齐 TextCardItem 的写法），松手时一次性提交 */
       onResizeStop={(_e, _dir, ref, _delta, position) => {
         if (!projectId) return
         updateVideoBounds(video.id, {
@@ -145,15 +137,6 @@ function VideoItem({ video }: { video: CanvasVideo }) {
       }}
       onDragStart={() => {
         document.body.style.cursor = 'grabbing'
-      }}
-      onDrag={(_e, d) => {
-        document.body.style.cursor = 'grabbing'
-        patchVideoBoundsLive(video.id, {
-          x: d.x,
-          y: d.y,
-          width: video.width,
-          height: video.height,
-        })
       }}
     >
       <div

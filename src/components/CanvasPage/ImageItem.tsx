@@ -21,9 +21,7 @@ function ImageItem({ image }: { image: CanvasImage }) {
   const selectedImageId = useProjectStore((s) => s.selectedImageId)
   const objectUrl = useProjectStore((s) => s.imageObjectUrls.get(image.id))
   const updateImagePosition = useProjectStore((s) => s.updateImagePosition)
-  const patchImagePositionLive = useProjectStore((s) => s.patchImagePositionLive)
   const updateImageBounds = useProjectStore((s) => s.updateImageBounds)
-  const patchImageBoundsLive = useProjectStore((s) => s.patchImageBoundsLive)
   const setSelectedImage = useProjectStore((s) => s.setSelectedImage)
   const canvasScale = useProjectStore((s) => s.canvasScale)
   const isCanvasSelectionMode = useProjectStore((s) => s.isCanvasSelectionMode)
@@ -155,18 +153,7 @@ function ImageItem({ image }: { image: CanvasImage }) {
       onDragStart={() => {
         document.body.style.cursor = 'grabbing'
       }}
-      onDrag={(_e, d) => {
-        document.body.style.cursor = 'grabbing'
-        patchImagePositionLive(image.id, { x: d.x, y: d.y })
-      }}
-      onResize={(_e, _dir, ref, _delta, position) => {
-        patchImageBoundsLive(image.id, {
-          x: position.x,
-          y: position.y,
-          width: parseFloat(ref.style.width),
-          height: parseFloat(ref.style.height),
-        })
-      }}
+      /* 拖拽/缩放期间 react-rnd 自己操作 DOM，不回写 store——逐帧 set() 会让整棵 Canvas 树重渲染（对齐 TextCardItem 的写法），松手时一次性提交 */
       onResizeStop={(_e, _dir, ref, _delta, position) => {
         if (!projectId) return
         updateImageBounds(image.id, {

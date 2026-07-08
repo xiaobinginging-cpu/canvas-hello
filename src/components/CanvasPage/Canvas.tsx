@@ -82,9 +82,14 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
   const applyPlaneTransformDom = useCallback(() => {
     const plane = planeRef.current
     const hud = hudPercentRef.current
+    const viewport = viewportRef.current
     const { panX, panY, scale } = liveViewportRef.current
     if (plane) {
       plane.style.transform = `translate3d(${panX}px, ${panY}px, 0) scale(${scale})`
+    }
+    if (viewport) {
+      // 波点背景跟随平移（live 阶段 store 未更新，直接写 DOM；commit 后 React 渲染会归位到同值）
+      viewport.style.backgroundPosition = `${modPos(panX, VIEWPORT_DOT_SPACING_PX)}px ${modPos(panY, VIEWPORT_DOT_SPACING_PX)}px`
     }
     if (hud) {
       hud.textContent = hudPercentLabel(scale)
@@ -150,14 +155,22 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
 
   useEffect(() => {
     if (!isPanning) return
+    // 平移与滚轮缩放同一套 live viewport 机制：mousemove 只写 DOM，松手一次性 commit store
     const onMove = (e: globalThis.MouseEvent) => {
       const p = panStartRef.current
       if (!p) return
-      setCanvasPan(p.panX + (e.clientX - p.clientX), p.panY + (e.clientY - p.clientY))
+      liveViewportRef.current = {
+        ...liveViewportRef.current,
+        panX: p.panX + (e.clientX - p.clientX),
+        panY: p.panY + (e.clientY - p.clientY),
+      }
+      scheduleRafApply()
     }
     const onUp = () => {
       panStartRef.current = null
       setIsPanning(false)
+      const { panX, panY } = liveViewportRef.current
+      setCanvasPan(panX, panY)
     }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
@@ -165,7 +178,7 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
     }
-  }, [isPanning, setCanvasPan])
+  }, [isPanning, setCanvasPan, scheduleRafApply])
 
   useEffect(() => {
     const el = viewportRef.current
@@ -173,17 +186,29 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
       wheelGestureActiveRef.current = true
-      const r = el.getBoundingClientRect()
-      const vx = e.clientX - r.left
-      const vy = e.clientY - r.top
-      const dir = e.deltaY > 0 ? -1 : 1
       const cur = liveViewportRef.current
-      const step = zoomNudgeStep(cur.scale)
-      const next = computeCanvasZoomAtPoint(cur.panX, cur.panY, cur.scale, cur.scale + dir * step, vx, vy)
-      liveViewportRef.current = {
-        panX: next.canvasPanX,
-        panY: next.canvasPanY,
-        scale: next.canvasScale,
+      // deltaMode=1（按行）换算成像素（Firefox 外接鼠标）
+      const unit = e.deltaMode === 1 ? 16 : 1
+      if (e.ctrlKey || e.metaKey) {
+        // Mac 触控板捏合会带 ctrlKey=true 的 wheel 事件；Ctrl/Cmd+滚轮 同样走缩放。
+        // 乘法缩放跟随 delta 大小（捏合 delta 小而密 → 平滑），单事件限幅防外接鼠标一格跳太远。
+        const r = el.getBoundingClientRect()
+        const vx = e.clientX - r.left
+        const vy = e.clientY - r.top
+        const factor = Math.min(1.25, Math.max(0.8, Math.exp(-e.deltaY * unit * 0.01)))
+        const next = computeCanvasZoomAtPoint(cur.panX, cur.panY, cur.scale, cur.scale * factor, vx, vy)
+        liveViewportRef.current = {
+          panX: next.canvasPanX,
+          panY: next.canvasPanY,
+          scale: next.canvasScale,
+        }
+      } else {
+        // 双指滚动 / 普通滚轮 → 平移画布（Figma/Miro 习惯），不再和触控板滚动手势打架
+        liveViewportRef.current = {
+          ...cur,
+          panX: cur.panX - e.deltaX * unit,
+          panY: cur.panY - e.deltaY * unit,
+        }
       }
       scheduleRafApply()
       scheduleDebouncedViewportCommit()
@@ -210,7 +235,7 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
 
     flushPendingWheelZoomCommit()
 
-    const { canvasPanX: panX, canvasPanY: panY } = useProjectStore.getState()
+    const { panX, panY } = liveViewportRef.current
     panStartRef.current = {
       clientX: e.clientX,
       clientY: e.clientY,

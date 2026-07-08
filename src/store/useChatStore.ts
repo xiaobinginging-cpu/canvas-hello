@@ -227,11 +227,16 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     set({ loading: true, loadedProjectId: projectId, sessions: [], currentSessionId: null, error: null })
     try {
       const data = await github.loadChat(projectId)
+      // 快速 A→B 切换：晚返回的旧响应不能覆盖新项目的会话
+      if (get().loadedProjectId !== projectId) return
       const sessions = [...data.sessions].sort((a, b) => b.updatedAt - a.updatedAt)
       set({ sessions, currentSessionId: sessions[0]?.id ?? null, loading: false })
     } catch (e) {
       console.warn('[chat] loadForProject failed', e)
-      set({ loading: false })
+      // 回滚 loadedProjectId，否则下次 openPanel 早退、历史永远空白无法重试
+      if (get().loadedProjectId === projectId) {
+        set({ loading: false, loadedProjectId: null })
+      }
     }
   },
 
@@ -354,10 +359,16 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         ),
       }))
 
-    const persist = () =>
+    const persist = () => {
+      // 流式期间可能已切项目：get().sessions 已是别的项目的会话，写回会覆盖本项目聊天史
+      if (currentProjectId() !== projectId || get().loadedProjectId !== projectId) {
+        console.warn('[chat] project changed during send, skip persist')
+        return
+      }
       void github
         .saveChat(projectId, { sessions: get().sessions, updatedAt: Date.now() }, newAssets)
         .catch((e) => console.warn('[chat] saveChat failed', e))
+    }
 
     abortController = new AbortController()
     try {
