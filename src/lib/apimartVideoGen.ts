@@ -1,7 +1,7 @@
 /** APIMart async video generation（多模型 + 轮询）。 */
 
 import type { APImartVideoModel, VideoQuality } from '../types/video.ts'
-import { apimartBaseURL } from './apimartGen.ts'
+import { apimartBaseURL, downloadGeneratedAsset } from './apimartGen.ts'
 import { getApiKey, invalidApiKeyMessage, missingApiKeyMessage } from './apiKeys.ts'
 
 export type { APImartVideoModel, VideoQuality } from '../types/video.ts'
@@ -299,17 +299,7 @@ export async function generateVideoViaAPImart(opts: {
         throw new Error('[video/apimart/completed] no video URL in response')
       }
       console.log('[video/apimart] done, downloading', urls.length, 'videos')
-      const blobs = await Promise.all(
-        urls.map(async (u) => {
-          const r = await fetch(u)
-          if (!r.ok) {
-            console.error('[video/apimart] error → download', u, r.status)
-            throw new Error(`[video/apimart/download] ${u} failed ${r.status}`)
-          }
-          return r.blob()
-        }),
-      )
-      return blobs
+      return Promise.all(urls.map((u) => downloadGeneratedAsset(u, 'video/apimart')))
     }
 
     if (['failed', 'error', 'cancelled', 'canceled'].includes(statusLc)) {

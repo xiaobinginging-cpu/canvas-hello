@@ -76,6 +76,31 @@ function blobToBase64(blob: Blob): Promise<string> {
   })
 }
 
+/**
+ * 下载生成结果：先直连（快、省一次函数调用），被 CORS 拒（GPT Image 2 的结果在
+ * 不带 CORS 头的 getapib.org）或非 2xx 时回退服务端代理 /api/fetch-image。
+ */
+export async function downloadGeneratedAsset(u: string, tag: string): Promise<Blob> {
+  try {
+    const r = await fetch(u)
+    if (r.ok) {
+      const b = await r.blob()
+      if (b.size > 0) return b
+    }
+    console.warn(`[${tag}] direct download failed ${r.status}, falling back to proxy`, u)
+  } catch (e) {
+    console.warn(`[${tag}] direct download blocked (CORS?), falling back to proxy`, e)
+  }
+  const r2 = await fetch(`/api/fetch-image?url=${encodeURIComponent(u)}`)
+  if (!r2.ok) {
+    console.error(`[${tag}] error → proxy download`, u, r2.status)
+    throw new Error(`[${tag}/download] ${u} failed ${r2.status}`)
+  }
+  const blob = await r2.blob()
+  if (blob.size === 0) throw new Error(`[${tag}/download] empty blob via proxy`)
+  return blob
+}
+
 const POLL_INTERVAL_MS = 3000
 // GPT Image 2 官方预估 ~100s/张，n>1 更久；3 分钟必超时（视频同款问题，对齐 video 的 10 分钟）
 const TIMEOUT_MS = 600_000
@@ -256,17 +281,7 @@ export async function generateViaAPImart(opts: {
         throw new Error('[apimart/completed] no image URL in response')
       }
       console.log('[apimart] completed, downloading', urls.length, 'images')
-      const blobs = await Promise.all(
-        urls.map(async (u) => {
-          const r = await fetch(u)
-          if (!r.ok) {
-            console.error('[apimart] error → download', u, r.status)
-            throw new Error(`[apimart/download] ${u} failed ${r.status}`)
-          }
-          return r.blob()
-        }),
-      )
-      return blobs
+      return Promise.all(urls.map((u) => downloadGeneratedAsset(u, 'apimart')))
     }
 
     if (['failed', 'error', 'cancelled', 'canceled'].includes(statusLc)) {
