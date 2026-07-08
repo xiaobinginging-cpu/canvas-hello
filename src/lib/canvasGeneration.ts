@@ -492,22 +492,44 @@ export async function runCanvasImageGeneration(params: {
   const isMJ = api === 'apimart' && coerceApimartModelId(model) === 'midjourney'
   const effCount = isMJ ? 4 : count
 
+  // MJ 的 4 张变体按 2×2 田字格平铺（30px 瀑布错位对大图等于全叠在一起）；其余模型保持原瀑布
+  const MJ_GAP = 24
+  let mjOrigin = { x: 40, y: 40 }
+  if (isMJ && viewportEl) {
+    mjOrigin = centerWorldPositionInViewport(
+      viewportEl,
+      baseSize.w * 2 + MJ_GAP,
+      baseSize.h * 2 + MJ_GAP,
+      canvasPanX,
+      canvasPanY,
+      canvasScale,
+    )
+  }
+
   const placeholderIds: string[] = []
   for (let i = 0; i < effCount; i++) {
     const imgId = nanoid()
     placeholderIds.push(imgId)
-    const stagger = (imageCountAtStart + i) * CASCADE_STEP
-    let position = { x: 40 + stagger, y: 40 + stagger }
-    if (viewportEl) {
-      const center = centerWorldPositionInViewport(
-        viewportEl,
-        baseSize.w,
-        baseSize.h,
-        canvasPanX,
-        canvasPanY,
-        canvasScale,
-      )
-      position = { x: center.x + stagger, y: center.y + stagger }
+    let position: { x: number; y: number }
+    if (isMJ) {
+      position = {
+        x: mjOrigin.x + (i % 2) * (baseSize.w + MJ_GAP),
+        y: mjOrigin.y + Math.floor(i / 2) * (baseSize.h + MJ_GAP),
+      }
+    } else {
+      const stagger = (imageCountAtStart + i) * CASCADE_STEP
+      position = { x: 40 + stagger, y: 40 + stagger }
+      if (viewportEl) {
+        const center = centerWorldPositionInViewport(
+          viewportEl,
+          baseSize.w,
+          baseSize.h,
+          canvasPanX,
+          canvasPanY,
+          canvasScale,
+        )
+        position = { x: center.x + stagger, y: center.y + stagger }
+      }
     }
 
     const placeholder: Image = {
