@@ -175,8 +175,8 @@ export default function ImageGenPanel({
               <select
                 className="min-w-[120px] rounded border border-neutral-200 bg-white px-2 py-1.5 text-xs text-neutral-900 disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={isMJ}
-                title={isMJ ? 'Midjourney 固定一次出 1 张 2×2 网格图，可在图上 U1-U4 放大' : undefined}
-                value={isMJ ? 1 : imageGenConfig.count}
+                title={isMJ ? 'Midjourney 固定一次出 4 张变体图，想放大哪张点图上的「放大」' : undefined}
+                value={isMJ ? 4 : imageGenConfig.count}
                 onChange={(e) =>
                   updateImageGenConfig({ count: Number(e.target.value) as 1 | 2 | 4 })
                 }

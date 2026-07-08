@@ -92,18 +92,33 @@ export default function ImageToolbar({
       {image.metadata.mjTaskId ? (
         <>
           <div className="mx-0.5 h-5 w-px self-center bg-neutral-200" aria-hidden />
-          {([1, 2, 3, 4] as const).map((i) => (
+          {image.metadata.mjIndex && image.metadata.mjIndex >= 1 && image.metadata.mjIndex <= 4 ? (
             <button
-              key={i}
               type="button"
-              title={`放大网格第 ${i} 张（Midjourney upscale）`}
+              title="放大这张（Midjourney upscale，按次计费）"
               disabled={image.isLoading || image.src === 'pending'}
               className="rounded px-1.5 py-1 text-[11px] font-medium text-neutral-900 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40"
-              onClick={() => void runMidjourneyUpscale(image.id, i)}
+              onClick={() =>
+                void runMidjourneyUpscale(image.id, image.metadata.mjIndex as 1 | 2 | 3 | 4)
+              }
             >
-              U{i}
+              放大
             </button>
-          ))}
+          ) : (
+            /* 旧数据兜底：没有变体序号的早期 MJ 图保留 U1-U4 */
+            ([1, 2, 3, 4] as const).map((i) => (
+              <button
+                key={i}
+                type="button"
+                title={`放大第 ${i} 张变体（Midjourney upscale，按次计费）`}
+                disabled={image.isLoading || image.src === 'pending'}
+                className="rounded px-1.5 py-1 text-[11px] font-medium text-neutral-900 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={() => void runMidjourneyUpscale(image.id, i)}
+              >
+                U{i}
+              </button>
+            ))
+          )}
         </>
       ) : null}
     </div>

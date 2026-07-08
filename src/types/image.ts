@@ -91,10 +91,16 @@ export interface ImageMetadata {
   libraryMaterialId?: string
 
   /**
-   * Midjourney（APImart）网格图的生成任务 id；图片工具栏 U1-U4 放大按钮据此调 upscale。
+   * Midjourney（APImart）的生成任务 id；图片工具栏"放大"按钮据此调 upscale。
    * 仅 `model === 'midjourney'` 的生成图携带。
    */
   mjTaskId?: string
+
+  /**
+   * 该图在 MJ 一次生成的 4 张变体中的序号（1-4），upscale 时作 index。
+   * 早期网格图（一张图带 U1-U4）无此字段。
+   */
+  mjIndex?: number
 }
 
 /**

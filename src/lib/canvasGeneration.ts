@@ -365,14 +365,14 @@ export async function retryCanvasImageGeneration(imageId: string): Promise<void>
   try {
     let blob: Blob
     if (api === 'apimart' && coerceApimartModelId(model) === 'midjourney') {
-      // MJ 重试要拿新 taskId 刷进元数据，否则 U1-U4 放大的还是旧网格
+      // MJ 重试是重新生成一个任务、取第 1 张变体；新 taskId/序号刷进元数据，否则放大的还是旧任务
       const { blobs, taskId } = await generateMidjourneyViaAPImart({ prompt, size: ratio })
       const b = blobs[0]
       if (!b || b.size === 0) throw new Error('[mj] empty result on retry')
       blob = b
       const st2 = useProjectStore.getState()
       const prevMeta = st2.currentProjectCanvas?.images.find((i) => i.id === imageId)?.metadata
-      if (prevMeta) st2.patchImage(imageId, { metadata: { ...prevMeta, mjTaskId: taskId } })
+      if (prevMeta) st2.patchImage(imageId, { metadata: { ...prevMeta, mjTaskId: taskId, mjIndex: 1 } })
     } else if (api === 'apimart') {
       const imageBlobs = refBlobs?.map((r) => r.blob)
       const blobs = await generateViaAPImart({
@@ -488,9 +488,9 @@ export async function runCanvasImageGeneration(params: {
   const baseSize = pixelSizeFromRatioAndResolution(ratio, resolution)
   const imageCountAtStart = canvas.images.length
 
-  // Midjourney 固定一次出 1 张 2×2 网格图（数量/分辨率/参考图参数均不适用）
+  // Midjourney 一次生成回 4 张独立变体图（实测非四宫格）；数量/分辨率/参考图参数不适用
   const isMJ = api === 'apimart' && coerceApimartModelId(model) === 'midjourney'
-  const effCount = isMJ ? 1 : count
+  const effCount = isMJ ? 4 : count
 
   const placeholderIds: string[] = []
   for (let i = 0; i < effCount; i++) {
@@ -560,29 +560,42 @@ export async function runCanvasImageGeneration(params: {
   let outcomes: Outcome[]
 
   if (isMJ) {
-    const imgId = placeholderIds[0]
     try {
       const { blobs, taskId } = await generateMidjourneyViaAPImart({
         prompt: promptTrim,
         size: ratio,
       })
-      const blob = blobs[0]
-      if (!blob || blob.size === 0) throw new Error('[mj] empty result')
-      // taskId 落到元数据，工具栏 U1-U4 放大按钮据此调 upscale
-      const stMj = useProjectStore.getState()
-      const prevMeta = stMj.currentProjectCanvas?.images.find((im) => im.id === imgId)?.metadata
-      if (prevMeta) stMj.patchImage(imgId, { metadata: { ...prevMeta, mjTaskId: taskId } })
-      outcomes = [{ kind: 'blob' as const, imgId, blob }]
+      if (blobs.length === 0 || !blobs.some((b) => b && b.size > 0)) {
+        throw new Error('[mj] empty result')
+      }
+      outcomes = placeholderIds.map((imgId, idx) => {
+        const blob = blobs[idx]
+        if (!blob || blob.size === 0) {
+          // 返回数少于 4（如网格模式只回 1 张）：多余占位直接移除，不算失败
+          genAbort.delete(imgId)
+          useProjectStore.getState().removeImage(imgId)
+          return { kind: 'abort' as const, imgId }
+        }
+        // taskId + 变体序号落元数据，工具栏"放大"按钮据此调 upscale
+        const st = useProjectStore.getState()
+        const prevMeta = st.currentProjectCanvas?.images.find((im) => im.id === imgId)?.metadata
+        if (prevMeta) {
+          st.patchImage(imgId, { metadata: { ...prevMeta, mjTaskId: taskId, mjIndex: idx + 1 } })
+        }
+        return { kind: 'blob' as const, imgId, blob }
+      })
     } catch (e) {
       const details = e instanceof Error ? e.message : String(e)
       console.error('[mj] error →', details)
-      genAbort.delete(imgId)
-      useProjectStore.getState().patchImage(imgId, {
-        isLoading: false,
-        cancelable: false,
-        uploadError: details,
+      outcomes = placeholderIds.map((imgId) => {
+        genAbort.delete(imgId)
+        useProjectStore.getState().patchImage(imgId, {
+          isLoading: false,
+          cancelable: false,
+          uploadError: details,
+        })
+        return { kind: 'fail' as const, imgId }
       })
-      outcomes = [{ kind: 'fail' as const, imgId }]
     }
   } else if (api === 'apimart') {
     const imageBlobs = refBlobs?.map((r) => r.blob)

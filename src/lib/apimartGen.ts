@@ -323,8 +323,8 @@ export async function generateViaAPImart(opts: {
 }
 
 /**
- * Midjourney（APImart 专用端点）：出 2×2 网格图（一张），比例经 `--ar` 拼进 prompt。
- * 返回 taskId 供后续 upscale（U1-U4）。不支持参考图。
+ * Midjourney（APImart 专用端点）：一次生成回 4 张独立变体图（实测非四宫格），
+ * 比例经 `--ar` 拼进 prompt。返回 taskId 供后续按变体序号 upscale。不支持参考图。
  */
 export async function generateMidjourneyViaAPImart(opts: {
   prompt: string
@@ -339,7 +339,7 @@ export async function generateMidjourneyViaAPImart(opts: {
   const prompt = hasAr || !opts.size ? opts.prompt : `${opts.prompt} --ar ${opts.size}`
 
   const taskId = await submitApimartTask(`${base}/midjourney/generations`, apiKey, { prompt }, 'mj')
-  const urls = await pollApimartTaskUrls(base, apiKey, taskId, 1, 'mj')
+  const urls = await pollApimartTaskUrls(base, apiKey, taskId, 4, 'mj')
   console.log('[mj] completed, downloading', urls.length, 'images')
   const blobs = await Promise.all(urls.map((u) => downloadGeneratedAsset(u, 'mj')))
   return { blobs, taskId }
