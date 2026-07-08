@@ -47,6 +47,9 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
   const videos = canvas?.videos ?? EMPTY_VIDEOS
   const textCards = canvas?.textCards ?? EMPTY_TEXT_CARDS
   const clearSelection = useProjectStore((s) => s.clearSelection)
+  const selectedImageId = useProjectStore((s) => s.selectedImageId)
+  const selectedVideoId = useProjectStore((s) => s.selectedVideoId)
+  const selectedTextCardId = useProjectStore((s) => s.selectedTextCardId)
   const canvasPanX = useProjectStore((s) => s.canvasPanX)
   const canvasPanY = useProjectStore((s) => s.canvasPanY)
   const canvasScale = useProjectStore((s) => s.canvasScale)
@@ -58,6 +61,8 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
 
   const [dropHighlight, setDropHighlight] = useState(false)
   const [isPanning, setIsPanning] = useState(false)
+  /** 视口尺寸（视口剔除用）；0 = 尚未测量，此时不剔除。 */
+  const [viewSize, setViewSize] = useState({ w: 0, h: 0 })
   const panStartRef = useRef<{
     clientX: number
     clientY: number
@@ -118,13 +123,29 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
     }, 200)
   }, [])
 
+  /** live 视口偏离 store 提交值超过半屏（或明显缩小）时立即 commit——让视口剔除跟上长距离平移/缩小，不等松手/防抖。 */
+  const maybeCommitForCulling = useCallback(() => {
+    const el = viewportRef.current
+    if (!el) return
+    const st = useProjectStore.getState()
+    const { panX, panY, scale } = liveViewportRef.current
+    if (
+      Math.abs(panX - st.canvasPanX) > el.clientWidth / 2 ||
+      Math.abs(panY - st.canvasPanY) > el.clientHeight / 2 ||
+      scale < st.canvasScale * 0.8
+    ) {
+      useProjectStore.setState({ canvasPanX: panX, canvasPanY: panY, canvasScale: scale })
+    }
+  }, [])
+
   const scheduleRafApply = useCallback(() => {
     if (rafIdRef.current != null) return
     rafIdRef.current = requestAnimationFrame(() => {
       rafIdRef.current = null
       applyPlaneTransformDom()
+      maybeCommitForCulling()
     })
-  }, [applyPlaneTransformDom])
+  }, [applyPlaneTransformDom, maybeCommitForCulling])
 
   /** Pan / fit / reset: sync live viewport + DOM from store (skip during active wheel gesture) */
   useLayoutEffect(() => {
@@ -142,6 +163,16 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
       if (rafIdRef.current != null) cancelAnimationFrame(rafIdRef.current)
     }
+  }, [])
+
+  useEffect(() => {
+    const el = viewportRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => {
+      setViewSize({ w: el.clientWidth, h: el.clientHeight })
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
   }, [])
 
   const setRefs = useCallback(
@@ -309,6 +340,31 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
   const dotBgX = modPos(canvasPanX, VIEWPORT_DOT_SPACING_PX)
   const dotBgY = modPos(canvasPanY, VIEWPORT_DOT_SPACING_PX)
 
+  /* 视口剔除：世界坐标 AABB 与「可见区 + 四周各一屏 margin」求交，视野外的 item 不挂载。
+     screen = world * scale + pan → world = (screen - pan) / scale；选中项始终保留（工具栏锚定其上）。 */
+  const cullOff = viewSize.w === 0
+  const cullMinX = (-canvasPanX - viewSize.w) / canvasScale
+  const cullMaxX = (-canvasPanX + 2 * viewSize.w) / canvasScale
+  const cullMinY = (-canvasPanY - viewSize.h) / canvasScale
+  const cullMaxY = (-canvasPanY + 2 * viewSize.h) / canvasScale
+  const inView = (x: number, y: number, w: number, h: number) =>
+    x + w >= cullMinX && x <= cullMaxX && y + h >= cullMinY && y <= cullMaxY
+  const visibleImages = cullOff
+    ? images
+    : images.filter(
+        (im) =>
+          im.id === selectedImageId ||
+          inView(im.position.x, im.position.y, im.size.w, im.size.h),
+      )
+  const visibleVideos = cullOff
+    ? videos
+    : videos.filter((v) => v.id === selectedVideoId || inView(v.x, v.y, v.width, v.height))
+  const visibleTextCards = cullOff
+    ? textCards
+    : textCards.filter(
+        (tc) => tc.id === selectedTextCardId || inView(tc.x, tc.y, tc.width, tc.height),
+      )
+
   return (
     <div
       ref={setRefs}
@@ -416,13 +472,13 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
           willChange: 'transform',
         }}
       >
-        {images.map((img) => (
+        {visibleImages.map((img) => (
           <ImageItem key={img.id} image={img} />
         ))}
-        {videos.map((v) => (
+        {visibleVideos.map((v) => (
           <VideoItem key={v.id} video={v} />
         ))}
-        {textCards.map((tc) => (
+        {visibleTextCards.map((tc) => (
           <TextCardItem key={tc.id} card={tc} />
         ))}
       </div>

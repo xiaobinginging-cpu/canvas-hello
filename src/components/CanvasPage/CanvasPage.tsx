@@ -72,6 +72,16 @@ export default function CanvasPage() {
     return () => window.clearTimeout(t)
   }, [toast])
 
+  /** 持久化最终失败（含离线队列写不进去）时必须让用户知道，否则以为已保存、刷新后丢数据。 */
+  useEffect(() => {
+    const onPersistError = (e: Event) => {
+      const msg = (e as CustomEvent<string>).detail
+      showToast(`⚠ 保存失败：${msg}`)
+    }
+    window.addEventListener(github.PERSIST_ERROR_EVENT, onPersistError)
+    return () => window.removeEventListener(github.PERSIST_ERROR_EVENT, onPersistError)
+  }, [showToast])
+
   /** Keep sidebar list aligned with GitHub when opening canvas directly. */
   useEffect(() => {
     if (!github.isAuthenticated()) return

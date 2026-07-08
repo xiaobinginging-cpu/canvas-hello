@@ -123,15 +123,8 @@ export interface ProjectStoreState {
   addImage: (image: Image) => void
   patchImage: (id: string, patch: Partial<Image>) => void
   updateImagePosition: (id: string, position: { x: number; y: number }) => void
-  /** Drag-only: updates canvas coordinates without bumping project metadata. */
-  patchImagePositionLive: (id: string, position: { x: number; y: number }) => void
   /** Resize commit: updates position + size, bumps project metadata. */
   updateImageBounds: (
-    id: string,
-    bounds: { x: number; y: number; width: number; height: number },
-  ) => void
-  /** Resize-only: live position + size without bumping project metadata. */
-  patchImageBoundsLive: (
     id: string,
     bounds: { x: number; y: number; width: number; height: number },
   ) => void
@@ -139,11 +132,6 @@ export interface ProjectStoreState {
   addVideo: (video: VideoItem) => void
   patchVideo: (id: string, patch: Partial<VideoItem>) => void
   updateVideoBounds: (
-    id: string,
-    bounds: { x: number; y: number; width: number; height: number },
-  ) => void
-  /** Drag/resize-only: updates canvas bounds without bumping project metadata. */
-  patchVideoBoundsLive: (
     id: string,
     bounds: { x: number; y: number; width: number; height: number },
   ) => void
@@ -634,15 +622,6 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     get().updateProject(s.currentProjectId, { updatedAt: now })
   },
 
-  patchImagePositionLive: (id, position) => {
-    const s = get()
-    if (!s.currentProjectCanvas) return
-    const images = s.currentProjectCanvas.images.map((im) =>
-      im.id === id ? { ...im, position } : im,
-    )
-    set({ currentProjectCanvas: { ...s.currentProjectCanvas, images } })
-  },
-
   updateImageBounds: (id, bounds) => {
     const s = get()
     if (!s.currentProjectId || !s.currentProjectMeta || !s.currentProjectCanvas) return
@@ -660,26 +639,21 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     get().updateProject(s.currentProjectId, { updatedAt: now })
   },
 
-  patchImageBoundsLive: (id, bounds) => {
-    const s = get()
-    if (!s.currentProjectCanvas) return
-    const images = s.currentProjectCanvas.images.map((im) =>
-      im.id === id
-        ? { ...im, position: { x: bounds.x, y: bounds.y }, size: { w: bounds.width, h: bounds.height } }
-        : im,
-    )
-    set({ currentProjectCanvas: { ...s.currentProjectCanvas, images } })
-  },
-
   removeImage: (id) => {
     const s = get()
     if (!s.currentProjectId || !s.currentProjectMeta || !s.currentProjectCanvas) return
     const now = Date.now()
     const nextMeta = { ...s.currentProjectMeta, updatedAt: now }
     const images = s.currentProjectCanvas.images.filter((im) => im.id !== id)
+    // objectURL 生命周期跟随数据而非组件挂载（视口剔除会反复 mount/unmount），删除时在这里回收
+    const url = s.imageObjectUrls.get(id)
+    if (url) URL.revokeObjectURL(url)
+    const nextUrls = new Map(s.imageObjectUrls)
+    nextUrls.delete(id)
     set({
       currentProjectCanvas: { ...s.currentProjectCanvas, images },
       currentProjectMeta: nextMeta,
+      imageObjectUrls: nextUrls,
       selectedImageId: s.selectedImageId === id ? null : s.selectedImageId,
       detailCardImageId: s.detailCardImageId === id ? null : s.detailCardImageId,
       saveToLibraryImageId: s.saveToLibraryImageId === id ? null : s.saveToLibraryImageId,
@@ -726,26 +700,20 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     get().updateProject(s.currentProjectId, { updatedAt: now })
   },
 
-  patchVideoBoundsLive: (id, bounds) => {
-    const s = get()
-    if (!s.currentProjectCanvas) return
-    const videos = (s.currentProjectCanvas.videos ?? []).map((v) =>
-      v.id === id
-        ? { ...v, x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }
-        : v,
-    )
-    set({ currentProjectCanvas: { ...s.currentProjectCanvas, videos } })
-  },
-
   removeVideo: (id) => {
     const s = get()
     if (!s.currentProjectId || !s.currentProjectMeta || !s.currentProjectCanvas) return
     const now = Date.now()
     const nextMeta = { ...s.currentProjectMeta, updatedAt: now }
     const videos = (s.currentProjectCanvas.videos ?? []).filter((v) => v.id !== id)
+    const url = s.videoObjectUrls.get(id)
+    if (url) URL.revokeObjectURL(url)
+    const nextUrls = new Map(s.videoObjectUrls)
+    nextUrls.delete(id)
     set({
       currentProjectCanvas: { ...s.currentProjectCanvas, videos },
       currentProjectMeta: nextMeta,
+      videoObjectUrls: nextUrls,
       selectedVideoId: s.selectedVideoId === id ? null : s.selectedVideoId,
     })
     get().updateProject(s.currentProjectId, { updatedAt: now })

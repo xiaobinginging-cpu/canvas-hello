@@ -93,11 +93,11 @@ function ImageItem({ image }: { image: CanvasImage }) {
 
     return () => {
       cancelled = true
-      useProjectStore.getState().revokeImageObjectUrl(image.id)
-      console.log(`[image/load] cleanup id=${image.id} (revoke if URL was registered)`)
     }
-    /* Identity deps only — omit isLoading/uploadError/objectUrl: effect must not re-run after
-       upload completes or cleanup would revoke the URL registerImageObjectUrl just set. */
+    /* unmount 不 revoke objectURL——视口剔除会反复 mount/unmount，revoke 了移回视野就得重新下载；
+       生命周期由 store 管（removeImage / 切项目时统一回收）。
+       Identity deps only — omit isLoading/uploadError/objectUrl: effect must not re-run after
+       upload completes. */
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, image.id, image.src])
@@ -168,7 +168,8 @@ function ImageItem({ image }: { image: CanvasImage }) {
       <div
         data-image-item
         className="relative h-full w-full"
-        style={{ transform: 'translateZ(0)', willChange: 'transform' }}
+        /* 只在选中（可能被拖拽/缩放）时提独立合成层；静止 item 常驻 willChange 会占一层 GPU 显存 */
+        style={selected && !isCanvasSelectionMode ? { willChange: 'transform' } : undefined}
       >
         {selected && !isCanvasSelectionMode ? (
           <>

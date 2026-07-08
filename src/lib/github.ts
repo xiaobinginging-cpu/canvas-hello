@@ -1058,6 +1058,18 @@ export async function cleanupOrphanCanvasAssets(
 let saveQueueTail: Promise<void> = Promise.resolve()
 let saveQueueDepth = 0
 
+/** 保存最终失败（含离线队列也写不进去）时广播给 UI；用事件而非 import store——useStore 反向依赖本模块，直接引用会成环。 */
+export const PERSIST_ERROR_EVENT = 'canvas-hello:persist-error'
+
+function notifyPersistError(e: unknown): void {
+  const msg = e instanceof Error ? e.message : String(e)
+  try {
+    window.dispatchEvent(new CustomEvent(PERSIST_ERROR_EVENT, { detail: msg }))
+  } catch {
+    /* non-browser env */
+  }
+}
+
 /**
  * Writes `meta.json`, `canvas.json`, and optional new asset blobs to GitHub immediately (awaits each REST commit).
  * Failed saves may still be queued in localStorage (`github_pending_sync`) for retry when offline / conflict (see `persistFailedSave`).
@@ -1099,6 +1111,7 @@ export async function saveProject(
         }
       } catch (e) {
         console.error('[save/exec] error', e)
+        notifyPersistError(e)
       } finally {
         saveQueueDepth -= 1
         console.log('[save/exec] done')
@@ -1280,18 +1293,23 @@ function readPendingQueue(): PendingQueueFile {
   return { version: 1, items: [] }
 }
 
-function writePendingQueue(q: PendingQueueFile): void {
+function writePendingQueue(q: PendingQueueFile): boolean {
   try {
     localStorage.setItem(PENDING_SYNC_KEY, JSON.stringify(q))
-  } catch {
-    /* ignore */
+    return true
+  } catch (e) {
+    // 大 base64 资产极易撞 localStorage ~5MB 配额——吞掉会让调用方误以为"已入队"
+    console.error('[pending] write queue failed (quota?)', e)
+    return false
   }
 }
 
 async function persistPendingQueueItem(item: PendingItem): Promise<void> {
   const q = readPendingQueue()
   q.items.push(item)
-  writePendingQueue(q)
+  if (!writePendingQueue(q)) {
+    throw new Error('离线队列写入失败（本地存储空间不足），本次保存未能暂存')
+  }
 }
 
 /** Flushes queued saves/deletes (e.g. after auth or when `online`). */

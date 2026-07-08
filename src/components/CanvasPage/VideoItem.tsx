@@ -84,7 +84,7 @@ function VideoItem({ video }: { video: CanvasVideo }) {
 
     return () => {
       cancelled = true
-      useProjectStore.getState().revokeVideoObjectUrl(video.id)
+      // unmount 不 revoke——视口剔除会反复 mount/unmount；由 store 的 removeVideo/切项目统一回收
     }
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -142,7 +142,7 @@ function VideoItem({ video }: { video: CanvasVideo }) {
       <div
         data-video-item
         className="relative h-full w-full"
-        style={{ transform: 'translateZ(0)', willChange: 'transform' }}
+        style={selected && !isCanvasSelectionMode ? { willChange: 'transform' } : undefined}
       >
         {selected && !isCanvasSelectionMode ? (
           <>
