@@ -46,7 +46,15 @@ function createVolcClient(): OpenAI {
     apiKey: getApiKey('volcengine') ?? '',
     baseURL: volcBaseURL(),
     dangerouslyAllowBrowser: true,
+    // 非流式请求：别让卡片无限「生成中…」——60s 超时、只重试 1 次，失败尽快落到卡片上
+    timeout: 60_000,
+    maxRetries: 1,
   })
+}
+
+/** Ark 扩展参数：Seed 系列默认开深度思考，提示词描述任务不需要且极慢，显式关掉。 */
+function volcExtraBody(api: PromptGenAPI): Record<string, unknown> {
+  return api === 'volcengine' ? { thinking: { type: 'disabled' } } : {}
 }
 
 export type PromptGenAPI = 'google' | 'kimi' | 'volcengine'
@@ -143,7 +151,8 @@ async function generatePromptTextOnly(opts: {
     const completion = await createClient().chat.completions.create({
       model,
       messages: [{ role: 'user', content: instruction }],
-    })
+      ...volcExtraBody(api),
+    } as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming)
     const text = completion.choices[0]?.message?.content?.trim() ?? ''
     if (!text) throw new Error(`${keyProvider} returned empty text`)
     return text
@@ -214,7 +223,8 @@ export async function generatePromptFromImages(opts: {
     const completion = await createClient().chat.completions.create({
       model,
       messages: [{ role: 'user', content }],
-    })
+      ...volcExtraBody(api),
+    } as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming)
     const text = completion.choices[0]?.message?.content?.trim() ?? ''
     if (!text) throw new Error(`${keyProvider} returned empty text`)
     return text

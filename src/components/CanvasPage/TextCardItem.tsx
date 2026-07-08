@@ -607,11 +607,19 @@ function TextCardItem({ card }: { card: TextCard }) {
                     e.stopPropagation()
                     beginEditFromDoubleClick()
                   }}
-                  onWheel={(e) => {
-                    const el = textScrollRef.current
+                  /* React 的 onWheel 挂在根上是 passive 的，preventDefault 无效还每滚一下刷一条
+                     console 警告；改原生非 passive 监听：卡内滚文字，同时 stopPropagation 不让画布平移 */
+                  ref={(el) => {
                     if (!el) return
-                    el.scrollTop += e.deltaY
-                    e.preventDefault()
+                    const onWheel = (e: WheelEvent) => {
+                      const scroller = textScrollRef.current
+                      if (!scroller) return
+                      scroller.scrollTop += e.deltaY
+                      e.preventDefault()
+                      e.stopPropagation()
+                    }
+                    el.addEventListener('wheel', onWheel, { passive: false })
+                    return () => el.removeEventListener('wheel', onWheel)
                   }}
                 />
                 <div

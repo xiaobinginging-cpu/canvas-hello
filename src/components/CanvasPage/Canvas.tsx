@@ -215,6 +215,13 @@ const Canvas = forwardRef<HTMLDivElement>(function Canvas(_props, ref) {
     const el = viewportRef.current
     if (!el) return
     const onWheel = (e: WheelEvent) => {
+      // 正在编辑的文本卡 textarea 等要原生滚动，别抢
+      if (
+        e.target instanceof Element &&
+        (e.target.closest('textarea') || e.target.closest('[data-no-canvas-pan]'))
+      ) {
+        return
+      }
       e.preventDefault()
       wheelGestureActiveRef.current = true
       const cur = liveViewportRef.current
