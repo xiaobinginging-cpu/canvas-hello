@@ -5,7 +5,7 @@ import type { VideoModel, VideoProvider } from './video.ts'
 export interface TextCardPromptGenSource {
   kind: 'prompt-gen'
   sourceImageIds: string[]
-  api: 'google' | 'kimi'
+  api: 'google' | 'kimi' | 'volcengine'
   model: string
   instruction?: string
   generatedAt: number

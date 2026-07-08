@@ -77,7 +77,25 @@ function blobToBase64(blob: Blob): Promise<string> {
 }
 
 const POLL_INTERVAL_MS = 3000
-const TIMEOUT_MS = 180_000
+// GPT Image 2 官方预估 ~100s/张，n>1 更久；3 分钟必超时（视频同款问题，对齐 video 的 10 分钟）
+const TIMEOUT_MS = 600_000
+
+function extractImageUrlsFromPollPayload(payload: unknown): string[] {
+  const p = payload as
+    | { result?: { images?: Array<{ url?: unknown }> } }
+    | undefined
+  const urls: string[] = []
+  for (const img of p?.result?.images ?? []) {
+    if (img && typeof img === 'object' && 'url' in img) {
+      const u = (img as { url: unknown }).url
+      if (typeof u === 'string') urls.push(u)
+      else if (Array.isArray(u)) {
+        for (const x of u) if (typeof x === 'string') urls.push(x)
+      }
+    }
+  }
+  return urls
+}
 
 export async function generateViaAPImart(opts: {
   model: APImartModel
@@ -224,17 +242,18 @@ export async function generateViaAPImart(opts: {
     const progress = payload?.progress
     console.log('[apimart] poll status=', status, 'progress=', progress)
 
-    if (status === 'completed') {
-      const images = payload?.result?.images ?? []
-      const urls: string[] = []
-      for (const img of images) {
-        if (img && typeof img === 'object' && 'url' in img) {
-          const u = (img as { url: unknown }).url
-          if (typeof u === 'string') urls.push(u)
-          else if (Array.isArray(u)) {
-            for (const x of u) if (typeof x === 'string') urls.push(x)
-          }
-        }
+    // 放宽完成判定（video 同款修法）：APImart 有时卡在 processing 99% 不翻 completed，但结果已出。
+    // n>1 时可能中途出现部分 URL，故只有「状态完成 / URL 数够 n / progress 100 且有 URL」才算成。
+    const statusLc = status.toLowerCase()
+    const urls = extractImageUrlsFromPollPayload(payload)
+    const isDoneStatus = ['completed', 'succeeded', 'success', 'done', 'finished'].includes(statusLc)
+    const isDone =
+      isDoneStatus || urls.length >= opts.n || (urls.length > 0 && (progress ?? 0) >= 100)
+
+    if (isDone) {
+      if (urls.length === 0) {
+        console.error('[apimart] error → completed but no image URL', statusData)
+        throw new Error('[apimart/completed] no image URL in response')
       }
       console.log('[apimart] completed, downloading', urls.length, 'images')
       const blobs = await Promise.all(
@@ -250,9 +269,9 @@ export async function generateViaAPImart(opts: {
       return blobs
     }
 
-    if (status === 'failed') {
-      console.error('[apimart] error → task failed')
-      throw new Error('[apimart] task failed')
+    if (['failed', 'error', 'cancelled', 'canceled'].includes(statusLc)) {
+      console.error('[apimart] error → task', status)
+      throw new Error(`[apimart] task ${status}`)
     }
   }
 }

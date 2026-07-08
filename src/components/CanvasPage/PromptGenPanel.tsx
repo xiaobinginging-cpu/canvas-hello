@@ -6,6 +6,7 @@ import { hasApiKey, missingApiKeyMessage } from '../../lib/apiKeys.ts'
 import {
   GOOGLE_PROMPT_MODEL_OPTIONS,
   KIMI_PROMPT_MODELS,
+  VOLC_PROMPT_MODEL_OPTIONS,
   DEFAULT_PROMPT_GEN_INSTRUCTION_PLACEHOLDER,
   type PromptGenAPI,
   type PromptGenModel,
@@ -34,11 +35,17 @@ export default function PromptGenPanel({
 
   const modelsForApi = useMemo((): readonly { value: PromptGenModel; label: string }[] => {
     if (promptGenConfig.api === 'google') return [...GOOGLE_PROMPT_MODEL_OPTIONS]
+    if (promptGenConfig.api === 'volcengine') return [...VOLC_PROMPT_MODEL_OPTIONS]
     return KIMI_PROMPT_MODELS.map((value) => ({ value, label: value }))
   }, [promptGenConfig.api])
 
-  const apiKeyOk =
-    promptGenConfig.api === 'google' ? hasApiKey('google') : hasApiKey('kimi')
+  const keyProviderForApi =
+    promptGenConfig.api === 'google'
+      ? ('google' as const)
+      : promptGenConfig.api === 'volcengine'
+        ? ('volcengine' as const)
+        : ('kimi' as const)
+  const apiKeyOk = hasApiKey(keyProviderForApi)
 
   const hasReferenceImages = promptGenImageIds.length > 0
   const hasInstruction = promptGenConfig.instruction.trim() !== ''
@@ -85,7 +92,7 @@ export default function PromptGenPanel({
             to="/settings"
             className="block rounded-lg border border-[#c9b8bb] bg-[#faf6f7] px-3 py-2 text-xs text-neutral-800 underline decoration-[#5f7163]/50 decoration-2 underline-offset-2 hover:decoration-[#5f7163]"
           >
-            {missingApiKeyMessage(promptGenConfig.api === 'google' ? 'google' : 'kimi')}
+            {missingApiKeyMessage(keyProviderForApi)}
           </Link>
         ) : null}
 
@@ -127,10 +134,12 @@ export default function PromptGenPanel({
                 value={promptGenConfig.api}
                 onChange={(e) => {
                   const api = e.target.value as PromptGenAPI
-                  const nextValues =
+                  const nextValues: readonly PromptGenModel[] =
                     api === 'google'
                       ? GOOGLE_PROMPT_MODEL_OPTIONS.map((o) => o.value)
-                      : [...KIMI_PROMPT_MODELS]
+                      : api === 'volcengine'
+                        ? VOLC_PROMPT_MODEL_OPTIONS.map((o) => o.value)
+                        : [...KIMI_PROMPT_MODELS]
                   const model = nextValues.includes(promptGenConfig.model as PromptGenModel)
                     ? (promptGenConfig.model as PromptGenModel)
                     : nextValues[0]
@@ -139,6 +148,7 @@ export default function PromptGenPanel({
               >
                 <option value="google">Google</option>
                 <option value="kimi">Kimi</option>
+                <option value="volcengine">豆包</option>
               </select>
             </label>
 

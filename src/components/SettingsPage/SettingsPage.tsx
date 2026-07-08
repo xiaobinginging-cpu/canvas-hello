@@ -33,6 +33,7 @@ const EMPTY_STORED: Record<ApiKeyProvider, string> = {
   glm: '',
   qwen: '',
   deepseek: '',
+  volcengine: '',
 }
 
 const KEY_FIELDS: {
@@ -81,6 +82,12 @@ const KEY_FIELDS: {
     provider: 'mimo',
     label: 'MiMo（小米）',
   },
+  {
+    provider: 'volcengine',
+    label: '火山方舟（豆包）',
+    helpUrl: 'https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey',
+    helpLabel: '去哪拿 key →',
+  },
 ]
 
 function newRandomId(): string {
@@ -99,6 +106,7 @@ export default function SettingsPage() {
     glm: false,
     qwen: false,
     deepseek: false,
+    volcengine: false,
   })
   const [draft, setDraft] = useState<Record<ApiKeyProvider, string>>(EMPTY_STORED)
   const [visible, setVisible] = useState<Record<ApiKeyProvider, boolean>>({
@@ -109,6 +117,7 @@ export default function SettingsPage() {
     glm: false,
     qwen: false,
     deepseek: false,
+    volcengine: false,
   })
   const [nameSuffix, setNameSuffix] = useState<Record<ApiKeyProvider, string>>(EMPTY_STORED)
 
@@ -126,6 +135,7 @@ export default function SettingsPage() {
       glm: getApiKey('glm') ?? '',
       qwen: getApiKey('qwen') ?? '',
       deepseek: getApiKey('deepseek') ?? '',
+      volcengine: getApiKey('volcengine') ?? '',
     })
   }, [])
 

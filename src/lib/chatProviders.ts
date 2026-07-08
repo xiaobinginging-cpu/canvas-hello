@@ -66,6 +66,16 @@ export const CHAT_AGENTS: readonly ChatAgent[] = [
     keyProvider: 'mimo',
     models: [{ value: 'mimo-v2.5-pro', label: 'MiMo v2.5 Pro' }],
   },
+  {
+    id: 'volcengine',
+    label: '豆包',
+    keyProvider: 'volcengine',
+    models: [
+      // Seed 2.1（2026-06 发布）：Pro 深度思考旗舰 / Turbo 半价低延迟，均为多模态
+      { value: 'doubao-seed-2-1-pro-260628', label: 'Seed 2.1 Pro', vision: true },
+      { value: 'doubao-seed-2-1-turbo-260628', label: 'Seed 2.1 Turbo', vision: true },
+    ],
+  },
 ] as const
 
 /** 当前 agent+model 是否支持发图片（多模态）。 */

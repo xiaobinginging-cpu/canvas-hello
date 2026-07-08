@@ -6,6 +6,7 @@ export type ApiKeyProvider =
   | 'glm'
   | 'qwen'
   | 'deepseek'
+  | 'volcengine'
 
 const STORAGE: Record<ApiKeyProvider, string> = {
   google: 'canvas-hello.api-key.google',
@@ -15,6 +16,7 @@ const STORAGE: Record<ApiKeyProvider, string> = {
   glm: 'canvas-hello.api-key.glm',
   qwen: 'canvas-hello.api-key.qwen',
   deepseek: 'canvas-hello.api-key.deepseek',
+  volcengine: 'canvas-hello.api-key.volcengine',
 }
 
 export const API_KEYS_CHANGED_EVENT = 'canvas-hello-api-keys-changed'
@@ -27,6 +29,7 @@ export const API_KEY_LABEL: Record<ApiKeyProvider, string> = {
   glm: 'GLM (智谱)',
   qwen: 'Qwen (通义)',
   deepseek: 'DeepSeek',
+  volcengine: '火山方舟 (豆包)',
 }
 
 export function getApiKey(provider: ApiKeyProvider): string | null {

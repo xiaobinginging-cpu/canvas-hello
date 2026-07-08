@@ -14,6 +14,7 @@ const UPSTREAM: Record<string, string> = {
   glm: 'https://open.bigmodel.cn/api/paas/v4',
   qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   mimo: 'https://api.xiaomimimo.com/v1',
+  volcengine: 'https://ark.cn-beijing.volces.com/api/v3',
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {

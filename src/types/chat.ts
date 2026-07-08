@@ -6,7 +6,7 @@
 export type ChatRole = 'user' | 'assistant'
 
 /** 聊天「智能体」provider（全部走 OpenAI 兼容接口；≠ 图像生成的 apimart）。 */
-export type ChatProvider = 'google' | 'kimi' | 'mimo' | 'glm' | 'qwen' | 'deepseek'
+export type ChatProvider = 'google' | 'kimi' | 'mimo' | 'glm' | 'qwen' | 'deepseek' | 'volcengine'
 
 /** user 消息附带的图片（多模态）。存 `_chat/assets/`、跨设备同步。 */
 export interface ChatImageRef {

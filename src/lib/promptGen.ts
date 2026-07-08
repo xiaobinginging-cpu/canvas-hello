@@ -30,14 +30,35 @@ function createGooglePromptClient(): GoogleGenerativeAI {
   return new GoogleGenerativeAI(getApiKey('google') ?? '')
 }
 
-export type PromptGenAPI = 'google' | 'kimi'
+/** 火山方舟（豆包）走通用 /api/llm 流式代理，同 chat 小精灵一条链路。 */
+function volcBaseURL(): string {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return `${window.location.origin}/api/llm/volcengine`
+  }
+  if (import.meta.env.DEV) {
+    return 'http://localhost:5273/api/llm/volcengine'
+  }
+  return 'https://ark.cn-beijing.volces.com/api/v3'
+}
+
+function createVolcClient(): OpenAI {
+  return new OpenAI({
+    apiKey: getApiKey('volcengine') ?? '',
+    baseURL: volcBaseURL(),
+    dangerouslyAllowBrowser: true,
+  })
+}
+
+export type PromptGenAPI = 'google' | 'kimi' | 'volcengine'
 
 export type GooglePromptVisionModel =
   | 'gemini-3.1-flash-lite-preview'
   | 'gemini-3-flash-preview'
   | 'gemini-3.1-pro-preview'
 
-export type PromptGenModel = GooglePromptVisionModel | 'kimi-k2.6'
+export type VolcPromptModel = 'doubao-seed-2-1-turbo-260628' | 'doubao-seed-2-1-pro-260628'
+
+export type PromptGenModel = GooglePromptVisionModel | 'kimi-k2.6' | VolcPromptModel
 
 export const GOOGLE_PROMPT_MODEL_OPTIONS: ReadonlyArray<{
   value: GooglePromptVisionModel
@@ -52,6 +73,25 @@ export const GOOGLE_PROMPT_MODEL_VALUES: readonly GooglePromptVisionModel[] =
   GOOGLE_PROMPT_MODEL_OPTIONS.map((o) => o.value)
 
 export const KIMI_PROMPT_MODELS: readonly PromptGenModel[] = ['kimi-k2.6']
+
+/** Seed 2.1（2026-06）：Turbo 半价低延迟默认在前，两个都是多模态（吃图）。 */
+export const VOLC_PROMPT_MODEL_OPTIONS: ReadonlyArray<{
+  value: VolcPromptModel
+  label: string
+}> = [
+  { value: 'doubao-seed-2-1-turbo-260628', label: 'Seed 2.1 Turbo' },
+  { value: 'doubao-seed-2-1-pro-260628', label: 'Seed 2.1 Pro' },
+]
+
+/** OpenAI 兼容分支（kimi / volcengine）共用的 client 与 key provider。 */
+function openAICompatFor(api: 'kimi' | 'volcengine'): {
+  keyProvider: 'kimi' | 'volcengine'
+  createClient: () => OpenAI
+} {
+  return api === 'volcengine'
+    ? { keyProvider: 'volcengine', createClient: createVolcClient }
+    : { keyProvider: 'kimi', createClient: createKimiClient }
+}
 
 export const DEFAULT_PROMPT_GEN_INSTRUCTION_PLACEHOLDER =
   '用一段中文详细描述这张图、要适合作为图像生成 AI 的 prompt'
@@ -97,17 +137,18 @@ async function generatePromptTextOnly(opts: {
     }
   }
 
-  if (!getApiKey('kimi')) throw new Error(missingApiKeyMessage('kimi'))
+  const { keyProvider, createClient } = openAICompatFor(api)
+  if (!getApiKey(keyProvider)) throw new Error(missingApiKeyMessage(keyProvider))
   try {
-    const completion = await createKimiClient().chat.completions.create({
+    const completion = await createClient().chat.completions.create({
       model,
       messages: [{ role: 'user', content: instruction }],
     })
     const text = completion.choices[0]?.message?.content?.trim() ?? ''
-    if (!text) throw new Error('Kimi returned empty text')
+    if (!text) throw new Error(`${keyProvider} returned empty text`)
     return text
   } catch (e) {
-    if (isUnauthorizedError(e)) throw new Error(invalidApiKeyMessage('kimi'))
+    if (isUnauthorizedError(e)) throw new Error(invalidApiKeyMessage(keyProvider))
     throw e
   }
 }
@@ -153,7 +194,8 @@ export async function generatePromptFromImages(opts: {
     }
   }
 
-  if (!getApiKey('kimi')) throw new Error(missingApiKeyMessage('kimi'))
+  const { keyProvider, createClient } = openAICompatFor(api)
+  if (!getApiKey(keyProvider)) throw new Error(missingApiKeyMessage(keyProvider))
   try {
     const content: Array<
       | { type: 'image_url'; image_url: { url: string } }
@@ -169,15 +211,15 @@ export async function generatePromptFromImages(opts: {
     }
     content.push({ type: 'text', text: instruction })
 
-    const completion = await createKimiClient().chat.completions.create({
+    const completion = await createClient().chat.completions.create({
       model,
       messages: [{ role: 'user', content }],
     })
     const text = completion.choices[0]?.message?.content?.trim() ?? ''
-    if (!text) throw new Error('Kimi returned empty text')
+    if (!text) throw new Error(`${keyProvider} returned empty text`)
     return text
   } catch (e) {
-    if (isUnauthorizedError(e)) throw new Error(invalidApiKeyMessage('kimi'))
+    if (isUnauthorizedError(e)) throw new Error(invalidApiKeyMessage(keyProvider))
     throw e
   }
 }
